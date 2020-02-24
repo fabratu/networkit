@@ -121,7 +121,7 @@ endif()
 # Following section manually sets the required fields for clang-like compiler
 if(("${CMAKE_CXX_COMPILER_ID}" STREQUAL "Clang") OR
 	"${CMAKE_CXX_COMPILER_ID}" STREQUAL "AppleClang")
-	find_library(LIBOMP_PATH NAMES omp HINTS "/usr/local/opt/libomp/include")
+	find_library(LIBOMP_PATH NAMES omp HINTS "/usr/local/opt/libomp/lib")
 	find_path(LIBOMP_INCLUDE NAMES omp.h HINTS "/usr/local/opt/libomp/include")
 	if(LIBOMP_PATH AND LIBOMP_INCLUDE)
 		if("${CMAKE_CXX_COMPILER_ID}" STREQUAL "AppleClang")
