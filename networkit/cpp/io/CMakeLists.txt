@@ -5,6 +5,8 @@ networkit_add_module(io
     BinaryPartitionWriter.cpp
     CoverReader.cpp
     CoverWriter.cpp
+    CustomFormatGraphReader.cpp
+    CustomFormatGraphWriter.cpp
     DGSReader.cpp
     DibapGraphReader.cpp
     DotGraphWriter.cpp

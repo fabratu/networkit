@@ -430,7 +430,49 @@ cdef class SNAPGraphReader(GraphReader):
 	def __cinit__(self, directed = False, remapNodes = True, nodeCount = 0):
 		self._this = new _SNAPGraphReader(directed, remapNodes, nodeCount)
 
+###################### WE INSERT OUR NEW READER HERE ######################
 
+cdef extern from "<networkit/io/CustomFormatGraphReader.hpp>":
+
+	cdef cppclass _CustomFormatGraphReader "NetworKit::CustomFormatGraphReader" (_GraphReader):
+		_CustomFormatGraphReader() except +
+
+cdef class CustomFormatGraphReader(GraphReader):
+	""" Description for custom format graph reader.
+ 	"""
+	def __cinit__(self):
+		self._this = new _CustomFormatGraphReader()
+
+###################### WE INSERT OUR NEW WRITER HERE ######################
+
+cdef extern from "<networkit/io/CustomFormatGraphWriter.hpp>":
+
+	cdef cppclass _CustomFormatGraphWriter "NetworKit::CustomFormatGraphWriter" (_GraphWriter):
+		_CustomFormatGraphWriter() except +
+		void utilFunction(string option) except +
+
+cdef class CustomFormatGraphWriter(GraphWriter):
+	""" 
+	Description for custom format graph writer.
+ 	"""
+	def __cinit__(self):
+		self._this = new _CustomFormatGraphWriter()
+
+	def utilFunction(self, option):
+		"""
+		Does good stuff for the custom format writer
+
+		Parameters
+		----------
+		option : str
+			Some option to set, which influences behavior of utilFunction
+		"""
+		assert option != None
+		cdef string c_option = stdstring(option)
+		(<_CustomFormatGraphWriter*>(self._this)).utilFunction(c_option)
+		
+		
+########################################################################
 
 cdef extern from "<networkit/io/PartitionReader.hpp>":
 
