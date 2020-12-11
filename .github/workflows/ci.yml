@@ -224,8 +224,9 @@ jobs:
         shell: bash
       - name: Update Coveralls 🚀
         run: |
+          cd ${{ github.workspace }}
           . pyenv/bin/activate
-          coveralls -E ".*test/.*" -E ".*CMakeFiles.*" --exclude extlibs --exclude pyenv --exclude scripts --root .
+          coveralls --verbose -E ".*test/.*" -E ".*CMakeFiles.*" --exclude extlibs --exclude pyenv --exclude scripts --root ${{ github.workspace }}
         env:
           COVERALLS_REPO_TOKEN: ${{ secrets.COVERALLS_REPO_TOKEN }}
 
@@ -250,14 +251,14 @@ jobs:
         run:  ${{ github.workspace }}/.github/workflows/scripts/documentation.sh
         shell: bash
       - name: Deploy networkit.github.io 🚀
-        uses: JamesIves/github-pages-deploy-action@3.7.1
+        uses: peaceiris/actions-gh-pages@v3
         with:
-          ACCESS_TOKEN: ${{ secrets.SECRET_DEPLOY_GITHUB_PAGES }}
-          BRANCH: master
-          BASE_BRANCH: master
-          FOLDER: core_build/htmldocs
-          REPOSITORY_NAME: networkit/dev-docs
-          CLEAN: false
+          personal_token: ${{ secrets.SECRET_DEPLOY_GITHUB_PAGES }}
+          external_repository: networkit/dev-docs
+          publish_branch:  master
+          publish_dir: ./core_build/htmldocs
+          user_name: 'github-actions[bot]'
+          user_email: 'github-actions[bot]@users.noreply.github.com'
 
   style-guide-compliance-build:
     name: "Style guide compliance build"
