@@ -284,7 +284,7 @@ jobs:
           coveralls -E ".*test/.*" -E ".*CMakeFiles.*" --exclude extlibs --exclude pyenv --exclude scripts --root ${{ github.workspace }}
         env:
           COVERALLS_REPO_TOKEN: ${{ secrets.COVERALLS_REPO_TOKEN }}
-          TRAVIS_JOB_ID: ${{ github.run_number }} # This is a temp. workaround for coveralls correctly detecting and increasing the build-number
+          TRAVIS_JOB_ID: ${{ github.sha }} # This is a temp. workaround for coveralls correctly detecting and increasing the build-number
 
   windows-build-msvc:
     name: "Windows Server 2019 (msvc 14.28): ${{ matrix.type }} build, ${{ matrix.variant }}"
