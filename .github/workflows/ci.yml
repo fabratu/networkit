@@ -278,7 +278,6 @@ jobs:
         run:  ${{ github.workspace }}/.github/workflows/scripts/core_sanitizers_coverage.sh
         shell: bash
       - name: Update Coveralls 🚀
-        if: github.event_name == 'push' && github.ref == 'refs/heads/master'
         run: |
           cd ${{ github.workspace }}
           . pyenv/bin/activate
