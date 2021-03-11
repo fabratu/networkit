@@ -2,6 +2,7 @@
 import unittest
 import os
 import networkit as nk
+import sys
 
 class TestGEXFIO(unittest.TestCase):
 	def setUp(self):
@@ -94,8 +95,10 @@ class TestGEXFIO(unittest.TestCase):
 				someFailed = True
 				print("Test failed for format {0}".format(format))
 				print(e)
-
 		# assert(not someFailed)
+
+		if someFailed:
+			sys.exit(1);
 
 if __name__ == "__main__":
 	unittest.main()

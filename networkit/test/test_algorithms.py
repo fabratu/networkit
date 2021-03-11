@@ -410,17 +410,17 @@ class TestSelfLoops(unittest.TestCase):
 			kCCD = nk.community.kCoreCommunityDetection(self.LL, 1, inspect=False)
 
 
-	def testFlowEdmondsKarp(self):
-		self.L.indexEdges()
-		self.LL.indexEdges()
-		r1 = nk.graphtools.randomNode(self.L)
-		r2 = nk.graphtools.randomNode(self.L)
-		while r1 is r2:
-			r2 = nk.graphtools.randomNode(self.L)
-		EKL = nk.flow.EdmondsKarp(self.L, r1, r2)
-		EKLL = nk.flow.EdmondsKarp(self.LL, r1, r2)
-		EKL.run()
-		EKLL.run()
+#	def testFlowEdmondsKarp(self):
+#		self.L.indexEdges()
+#		self.LL.indexEdges()
+#		r1 = nk.graphtools.randomNode(self.L)
+#		r2 = nk.graphtools.randomNode(self.L)
+#		while r1 is r2:
+#			r2 = nk.graphtools.randomNode(self.L)
+#		EKL = nk.flow.EdmondsKarp(self.L, r1, r2)
+#		EKLL = nk.flow.EdmondsKarp(self.LL, r1, r2)
+#		EKL.run()
+#		EKLL.run()
 
 
 	def testGlobalsClusteringCoefficient(self):
