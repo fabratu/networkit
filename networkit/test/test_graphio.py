@@ -87,7 +87,10 @@ class TestGEXFIO(unittest.TestCase):
 
 				kargs = [' ', 0] if format == nk.Format.EdgeList else []
 				nk.graphio.writeGraph(G, filename, format, *kargs)
-				G1 = nk.graphio.readGraph(filename, format, *kargs)
+				if format == nk.Format.GEXF:
+					G1, _ = nk.graphio.readGraph(filename, format, *kargs)
+				else:
+					G1 = nk.graphio.readGraph(filename, format, *kargs)
 				self.checkStatic(G, G1)
 
 			except Exception as e:
