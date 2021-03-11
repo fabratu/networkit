@@ -46,9 +46,6 @@ cdef class EdmondsKarp(Algorithm):
 		self._graph = graph # store reference of graph for memory management, so the graph is not deallocated before this object
 		self._this = new _EdmondsKarp(graph._this, source, sink)
 
-	def __dealloc__(self):
-		del self._this
-
 	def getMaxFlow(self):
 		"""
 		Returns: the value of the maximum flow from source to sink.
