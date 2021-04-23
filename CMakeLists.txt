@@ -656,7 +656,7 @@ else()
 
 	add_custom_target(general_docs
 			COMMAND rm -rf htmldocs
-			COMMAND ${SPHINX_EXECUTABLE} ${CMAKE_SOURCE_DIR}/docs htmldocs
+			COMMAND ${SPHINX_EXECUTABLE} ${CMAKE_SOURCE_DIR}/docs -T htmldocs
 			DEPENDS prepare_docs)
 
 	add_custom_target(docs DEPENDS general_docs)
