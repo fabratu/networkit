@@ -261,11 +261,11 @@ if (NETWORKIT_CLANG_TIDY)
 endif()
 
 if(NETWORKIT_PYTHON)
-	 foreach (EXT base centrality clique coarsening community components correlation
-			 distance dynamics embedding engineering flow generators globals graph graphio
-			 graphtools helpers independentset linkprediction matching profiling/stat
-			 randomization reachability scd simulation sparsification stats
-			 structures traversal viz)
+	 foreach (EXT base centrality clique coarsening community components correlation 
+	 		 correspondences distance dynamics embedding engineering flow generators 
+			 globals graph graphio graphtools helpers independentset linkprediction 
+			 matching profiling/stat randomization reachability scd simulation 
+			 sparsification stats structures traversal viz)
 
 		if(NOT EXISTS "${PROJECT_SOURCE_DIR}/networkit/${EXT}.cpp")
 			message(FATAL_ERROR "networkit/${EXT}.cpp is missing. Invoke Cython manually.")

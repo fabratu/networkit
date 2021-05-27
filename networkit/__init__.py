@@ -79,6 +79,7 @@ from . import sampling
 from . import viz
 from . import randomization
 from . import independentset
+from . import correspondences
 from .support import MissingDependencyError
 from .graphtools import GraphTools as graphtools
 
