@@ -86,7 +86,14 @@
 
 name: build
 
-on: [push, pull_request]
+# Create builds everytime a PR is created or a push (with the exception of tags) happens
+on:
+  push:
+    branches:
+      - '**'
+    tags-ignore:
+      - '*.*'
+  pull_request
 
 # Default parameters for all builds. 
 env:
