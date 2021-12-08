@@ -1,6 +1,10 @@
-name='networkit'
+from datetime import datetime
 
-version='9.0'
+name='networkittest'
+
+now = datetime.now() 
+
+version='9.0.dev' + now.strftime("%Y%m%d%H")
 
 url='https://networkit.github.io/'
 

@@ -10,6 +10,7 @@ cmakeCompiler = None
 buildDirectory = "build/build_python"
 ninja_available = False
 enable_osx_crossbuild = False
+publicVersionId = ""
 
 if sys.version_info.major < 3:
 	print("ERROR: NetworKit requires Python 3.")
