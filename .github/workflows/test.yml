@@ -4,9 +4,13 @@ on: [push, pull_request]
 
 
 jobs:
-  test1:
-    name: 'test1'
+  build1:
+    name: 'build-1'
     runs-on: ubuntu-20.04
+    strategy:
+      matrix:
+        cibw_archs: ["x86_64"]
+        manylinux_image: ["manylinux2010"]
     steps:
       - uses: actions/checkout@v2
         with:
@@ -15,18 +19,42 @@ jobs:
         name: Install Python
         with:
           python-version: '3.10'
-      - name: check tag ${{ github.ref }}
-        id: check-tag
+      - name: Build wheels
+        uses: pypa/cibuildwheel@v2.1.1
+        env:
+          CIBW_BEFORE_BUILD: pip install cython
+          CIBW_MANYLINUX_X86_64_IMAGE: ${{ matrix.manylinux_image }}
+          CIBW_ARCHS_LINUX: ${{ matrix.cibw_archs }}
+          CIBW_BUILD: "cp310-*"
+          CIBW_SKIP: pp*
+      - uses: actions/upload-artifact@v2
+        with:
+          path: ./wheelhouse/*cp310*.whl
+
+  test1:
+    needs: [build1]
+    name: "Check for new release"
+    runs-on: ubuntu-latest
+    outputs:
+      is-release: ${{ steps.do-check.outputs.is-release }}
+    steps:
+      - name: Echo github.ref
+        run: |
+          echo ${{ github.ref }}
+      - name: Check release tag ${{ github.ref }}
+        id: do-check
         run: |
           if [[ ${{ github.ref }} =~ ^refs\/tags\/release\/[0-9]+\.[0-9]+(\.[0-9]+)?$ ]]; then
-            echo "::set-output name=is_release::true"
+            echo "::set-output name=is-release::true"
           else
-            echo "::set-output name=is_release::false"
+            echo "::set-output name=is-release::false"
           fi
 
 
   test2:
-    name: 'test2'
+    needs: [test1]
+    if: needs.test1.outputs.is-release == 'true'
+    name: 'test-2'
     runs-on: ubuntu-20.04
     steps:
       - uses: actions/checkout@v2
@@ -37,6 +65,18 @@ jobs:
         with:
           python-version: '3.10'
       - name: check output
+        run: echo ${{ needs.test1.outputs.is-release }}
+      - uses: actions/download-artifact@v2
+        with:
+          path: ./dist
+      - name: Upload to TestPyPI
         run: |
-          echo ${{ needs.check_tag.outputs }}
+          pip install twine 
+          python3 -m twine upload --verbose --repository testpypi --skip-existing ./dist/artifact/*
+        env:
+          TWINE_USERNAME: __token__
+          TWINE_PASSWORD: ${{ secrets.TWINE_TEST_TOKEN }}
+
+          
+    
     
