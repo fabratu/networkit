@@ -8,7 +8,7 @@ env:
 
 jobs:
   cpython-linux-x86_64:
-    name: 'Linux CPython (${{ matrix.cibw_archs }}, ${{ matrix.manylinux_image }})'
+    name: 'Linux (${{ matrix.cibw_archs }}, ${{ matrix.manylinux_image }})'
     runs-on: ubuntu-20.04
     strategy:
       matrix:
@@ -32,57 +32,55 @@ jobs:
           CIBW_SKIP: pp*
       - uses: actions/upload-artifact@v2
         with:
-          path: ./wheelhouse/*cp38*.whl
-          retention-days: ${{ env.ARTIFACT_RETENTION }}
-      - uses: actions/upload-artifact@v2
-        with:
-          path: ./wheelhouse/*cp39*.whl
-          retention-days: ${{ env.ARTIFACT_RETENTION }}
-      - uses: actions/upload-artifact@v2
-        with:
-          path: ./wheelhouse/*cp310*.whl
+          name: Linux_${{ matrix.cibw_archs }}.zip
+          path: ./wheelhouse/*.whl
           retention-days: ${{ env.ARTIFACT_RETENTION }}
 
+# Experimental build using self-hosted runner. Marked as optional.
   cpython-linux-aarch64:
-    name: 'Linux CPython (${{ matrix.cibw_archs }}, ${{ matrix.manylinux_image }})'
-    runs-on: ${{ matrix.os }}
+    name: 'Linux (${{ matrix.cibw_archs }}, ${{ matrix.manylinux_image }})'
+    runs-on: self-hosted-frontend
+    continue-on-error: true
+    timeout-minutes: 15
     strategy:
       matrix:
-        os: [ubuntu-20.04]
         cibw_archs: ["aarch64"]
-        manylinux_image: ["manylinux2014"]
+        manylinux_image: ["manylinux_2_28"]
+        python_version: ["10"]
     steps:
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v1
-        with:
-          platforms: all
-      - uses: actions/checkout@v2
+      - name: Checkout networkit
+        uses: actions/checkout@v2
         with:
           submodules: true
-      - uses: actions/setup-python@v2
-        name: Install Python
-        with:
-          python-version: '3.9'
-      - name: Build wheels
-        uses: pypa/cibuildwheel@v2.1.1
-        env:
-          CIBW_BEFORE_BUILD: pip install cython
-          CIBW_MANYLINUX_X86_64_IMAGE: ${{ matrix.manylinux_image }}
-          CIBW_ARCHS_LINUX: ${{ matrix.cibw_archs }}
-          CIBW_BUILD: ${{ github.ref == 'refs/heads/master' && 'cp39-* cp310-*' || 'cp310-*' }}
-          CIBW_SKIP: pp*
+      - name: Build wheel with docker
+        run: |
+          /usr/local/bin/docker run \
+            -v$(pwd):/app \
+            -w/app \
+            --rm \
+            -e PYBIN=/opt/python/cp3${{ matrix.python_version }}-cp3${{ matrix.python_version }}/bin \
+            quay.io/pypa/${{ matrix.manylinux_image }}_${{ matrix.cibw_archs }} \
+            bash -c "
+              export PYTHONDONTWRITEBYTECODE=1
+              set -e -x
+              yum remove cmake -y
+              yum install cmake3 -y
+              echo '-->' \$PYBIN
+              \$PYBIN/python -m pip install --upgrade pip
+              \$PYBIN/pip install -r requirements.txt
+              \$PYBIN/pip install cython
+              mkdir -p /tmp/cibuildwheel/built_wheel
+              \$PYBIN/python -m pip wheel ./ --wheel-dir=/tmp/cibuildwheel/built_wheel --no-deps
+              mkdir -p ./repaired_wheel
+              auditwheel repair -w ./repaired_wheel /tmp/cibuildwheel/built_wheel/*"
       - uses: actions/upload-artifact@v2
-        if: github.ref == 'refs/heads/master'
         with:
-          path: ./wheelhouse/*cp39*.whl
-          retention-days: ${{ env.ARTIFACT_RETENTION }}
-      - uses: actions/upload-artifact@v2
-        with:
-          path: ./wheelhouse/*cp310*.whl
+          name: Linux_${{ matrix.cibw_archs }}.zip
+          path: ./repaired_wheel/*.whl
           retention-days: ${{ env.ARTIFACT_RETENTION }}
 
   cpython-macos-x86_64:
-    name: 'macOS CPython  (${{ matrix.cibw_archs }})'
+    name: 'macOS (${{ matrix.cibw_archs }})'
     runs-on: macos-latest
     strategy:
       matrix:
@@ -106,56 +104,46 @@ jobs:
           CIBW_SKIP: pp*
       - uses: actions/upload-artifact@v2
         with:
-          path: ./wheelhouse/*cp38*.whl
-          retention-days: ${{ env.ARTIFACT_RETENTION }}
-      - uses: actions/upload-artifact@v2
-        with:
-          path: ./wheelhouse/*cp39*.whl
-          retention-days: ${{ env.ARTIFACT_RETENTION }}
-      - uses: actions/upload-artifact@v2
-        with:
-          path: ./wheelhouse/*cp310*.whl
+          name: macOS_${{ matrix.cibw_archs }}.zip
+          path: ./wheelhouse/*.whl
           retention-days: ${{ env.ARTIFACT_RETENTION }}
 
-  # CROSSBUILDING ON MACOS IS CURRENTLY BROKEN BECAUSE OF OPENMP-DEPENDENCIES
-  # cpython-macos-arm64:
-  #   name: 'macOS CPython  (${{ matrix.cibw_archs }})'
-  #   runs-on: macos-latest
-  #   strategy:
-  #     matrix:
-  #       cibw_archs: ["arm64"]
-  #   steps:
-  #     - uses: actions/checkout@v2
-  #       with:
-  #         submodules: true
-  #     - uses: actions/setup-python@v2
-  #       name: Install Python
-  #       with:
-  #         python-version: '3.10'
-  #     - name: Build wheels
-  #       uses: pypa/cibuildwheel@v2.1.1
-  #       env:
-  #         CIBW_BEFORE_BUILD: 
-  #           pip install cython &&
-  #           brew install libomp ninja &&
-  #           pip install --pre -i https://pypi.anaconda.org/scipy-wheels-nightly/simple scipy
-  #         CIBW_ENVIRONMENT: CXX=c++ NETWORKIT_OSX_CROSSBUILD=ON
-  #         CIBW_ARCHS_MACOS: ${{ matrix.cibw_archs }}
-  #         CIBW_BUILD: "cp39-* cp310-*"
-  #         CIBW_SKIP: pp*
-  #     - uses: actions/upload-artifact@v2
-  #       with:
-  #         name: networkit-cp39-macos-${{ matrix.cibw_archs }}.whl
-  #         path: ./wheelhouse/*cp39*.whl
-  #         retention-days: ${{ env.ARTIFACT_RETENTION }}
-  #     - uses: actions/upload-artifact@v2
-  #       with:
-  #         name: networkit-cp310-macos-${{ matrix.cibw_archs }}.whl
-  #         path: ./wheelhouse/*cp310*.whl
-  #         retention-days: ${{ env.ARTIFACT_RETENTION }}
+# Experimental build using self-hosted runner. Marked as optional.
+  cpython-macos-arm64:
+    name: 'macOS (${{ matrix.cibw_archs }})'
+    runs-on: self-hosted-frontend
+    continue-on-error: true
+    timeout-minutes: 15
+    strategy:
+      matrix:
+        cibw_archs: ["arm64"]
+        python_version: ["9", "10"]
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          submodules: true
+      - name: Build wheel
+        run: |
+          . /opt/brew_init.sh
+          . /opt/conda_init.sh
+          conda activate builder-env-python3${{ matrix.python_version }}
+          python -m venv pyenv && . pyenv/bin/activate
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install cython wheel delocate
+          mkdir -p ./tmp/built_wheel
+          python -m pip wheel ./ --wheel-dir=./tmp/built_wheel --no-deps
+          mkdir -p ./repaired_wheel
+          delocate-listdeps ./tmp/built_wheel/*
+          delocate-wheel --require-archs arm64 -w ./repaired_wheel ./tmp/built_wheel/*
+      - uses: actions/upload-artifact@v2
+        with:
+          name: macOS_${{ matrix.cibw_archs }}.zip
+          path: ./repaired_wheel/*.whl
+          retention-days: ${{ env.ARTIFACT_RETENTION }}
 
   cpython-windows:
-    name: 'Windows CPython (${{ matrix.cibw_archs }})'
+    name: 'Windows (${{ matrix.cibw_archs }})'
     runs-on: windows-latest
     strategy:
       matrix:
@@ -179,15 +167,8 @@ jobs:
           CIBW_SKIP: pp*
       - uses: actions/upload-artifact@v2
         with:
+          name: Windows_${{ matrix.cibw_archs }}.zip
           path: ./wheelhouse/*cp38*.whl
-          retention-days: ${{ env.ARTIFACT_RETENTION }}
-      - uses: actions/upload-artifact@v2
-        with:
-          path: ./wheelhouse/*cp39*.whl
-          retention-days: ${{ env.ARTIFACT_RETENTION }}
-      - uses: actions/upload-artifact@v2
-        with:
-          path: ./wheelhouse/*cp310*.whl
           retention-days: ${{ env.ARTIFACT_RETENTION }}
 
   source-distribution:
@@ -232,7 +213,7 @@ jobs:
     if: needs.check-release-tag.outputs.is-release == 'true' && github.repository == 'networkit/networkit'
     name: 'PyPi release upload'
     runs-on: ubuntu-20.04
-    needs: [cpython-macos-x86_64, cpython-linux-aarch64, cpython-linux-x86_64, cpython-windows, source-distribution, check-release-tag]
+    needs: [cpython-macos-x86_64, cpython-macos-arm64, cpython-linux-aarch64, cpython-linux-x86_64, cpython-windows, source-distribution, check-release-tag]
     steps:
       - uses: actions/download-artifact@v2
         with:
@@ -248,4 +229,3 @@ jobs:
         env:
           TWINE_USERNAME: __token__
           TWINE_PASSWORD: ${{ secrets.TWINE_TOKEN }}
-
