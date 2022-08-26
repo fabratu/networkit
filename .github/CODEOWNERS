@@ -1,0 +1,3 @@
+# This is used to track changes and require approvals for certain folders/files.
+# Documentation: https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners
+/.github/ @fabratu
