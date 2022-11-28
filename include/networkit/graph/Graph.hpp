@@ -1730,7 +1730,7 @@ public:
      * graph.
      *
      * @param v Node.
-     *
+     * @note If a restored node was not part of graph before, the resulting graph will be inconsistent.
      */
 
     void restoreNode(node v);
@@ -1743,7 +1743,11 @@ public:
      * @param v Node.
      * @return The number of outgoing neighbors.
      */
-    count degree(node v) const { return outEdges[v].size(); }
+    count degree(node v) const { 
+        if (!hasNode(v))
+            throw std::runtime_error("Error, the node does not exist!");
+        return outEdges[v].size();
+    }
 
     /**
      * Get the number of incoming neighbors of @a v.
@@ -1752,15 +1756,22 @@ public:
      * @return The number of incoming neighbors.
      * @note If the graph is not directed, the outgoing degree is returned.
      */
-    count degreeIn(node v) const { return directed ? inEdges[v].size() : outEdges[v].size(); }
-
+    count degreeIn(node v) const { 
+        if (!hasNode(v))
+            throw std::runtime_error("Error, the node does not exist!");
+        return directed ? inEdges[v].size() : outEdges[v].size(); 
+    }
     /**
      * Get the number of outgoing neighbors of @a v.
      *
      * @param v Node.
      * @return The number of outgoing neighbors.
      */
-    count degreeOut(node v) const { return outEdges[v].size(); }
+    count degreeOut(node v) const { 
+        if (!hasNode(v))
+            throw std::runtime_error("Error, the node does not exist!");
+        return outEdges[v].size();
+    }
 
     /**
      * Check whether @a v is isolated, i.e. degree is 0.

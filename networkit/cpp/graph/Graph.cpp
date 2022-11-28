@@ -342,6 +342,8 @@ void Graph::sortEdges() {
 
 edgeweight Graph::computeWeightedDegree(node u, bool inDegree, bool countSelfLoopsTwice) const {
     if (weighted) {
+        if(!hasNode(u))
+            throw std::runtime_error("Error, the node does not exist!");
         edgeweight sum = 0.0;
         auto sumWeights = [&](node v, edgeweight w) {
             sum += (countSelfLoopsTwice && u == v) ? 2. * w : w;
@@ -430,6 +432,8 @@ node Graph::addNodes(count numberOfNewNodes) {
 void Graph::removeNode(node v) {
     assert(v < z);
     assert(exists[v]);
+    if (!hasNode(v))
+        throw std::runtime_error("Error, the node does not exist!");    
 
     // Remove all outgoing and ingoing edges
     while (!outEdges[v].empty())
