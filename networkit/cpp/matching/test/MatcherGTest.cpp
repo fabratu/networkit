@@ -8,6 +8,7 @@
 #include <gtest/gtest.h>
 
 #include <networkit/auxiliary/Random.hpp>
+#include <networkit/generators/ErdosRenyiGenerator.hpp>
 #include <networkit/graph/Graph.hpp>
 #include <networkit/graph/GraphTools.hpp>
 #include <networkit/io/DibapGraphReader.hpp>
@@ -15,16 +16,27 @@
 #include <networkit/matching/BMatcher.hpp>
 #include <networkit/matching/BMatching.hpp>
 #include <networkit/matching/BSuitorMatcher.hpp>
+#include <networkit/matching/DynamicBSuitorMatcher.hpp>
 #include <networkit/matching/LocalMaxMatcher.hpp>
 #include <networkit/matching/Matcher.hpp>
 #include <networkit/matching/Matching.hpp>
 #include <networkit/matching/PathGrowingMatcher.hpp>
 #include <networkit/matching/SuitorMatcher.hpp>
+#include <networkit/viz/GraphLayoutAlgorithm.hpp>
 
 namespace NetworKit {
 
 class MatcherGTest : public testing::Test {
 protected:
+    Graph generateRandomWeightedGraph(count n) {
+        // Generates a random undirected Graph with n nodes, a 0.5% chance for an edge between a
+        // pair of nodes and without self-loops. Sets a random weight for each edge.
+        auto G = ErdosRenyiGenerator(n, 0.5, false, false).generate();
+        G = GraphTools::toWeighted(G);
+        G.forEdges([&G](node u, node v) { G.setWeight(u, v, Aux::Random::integer(1, 100)); });
+        return G;
+    }
+
     // TODO use template instead of an overload when Matching base class is done
     bool hasUnmatchedNeighbors(const Graph &G, const BMatching &M) {
         for (const auto e : G.edgeRange())
@@ -214,7 +226,7 @@ TEST_F(MatcherGTest, testBSuitorMatcherTieBreaking) {
     G.removeSelfLoops();
     G.removeMultiEdges();
 
-    BSuitorMatcher bsm(G, 4);
+    BSuitorMatcher bsm(G, 1);
     bsm.run();
     bsm.buildBMatching();
     const auto M = bsm.getBMatching();
@@ -275,4 +287,77 @@ TEST_F(MatcherGTest, testBSuitorMatcherDifferentB) {
     EXPECT_TRUE(M.isProper(G));
     EXPECT_FALSE(hasUnmatchedNeighbors(G, M));
 }
+
+TEST_F(MatcherGTest, testDynBSuitorInsertEdges) {
+    for (int i = 0; i < 10; i++) {
+        Aux::Random::setSeed(i, true);
+
+        auto G = generateRandomWeightedGraph(100);
+        std::vector<WeightedEdge> edges;
+        count m = 10;
+        // Select m edges of the graph, remove them but put them into edges for later insertion.
+        // This will make sure that the graph is valid.
+        for (auto j = 0; j < m; j++) {
+            const auto [u, v] = GraphTools::randomEdge(G);
+            assert(G.hasEdge(u, v));
+            edges.emplace_back(u, v, G.weight(u, v));
+            G.removeEdge(u, v);
+        }
+
+        const count b = 6;
+        DynamicBSuitorMatcher dbsm(G, b);
+        dbsm.run();
+
+        for (auto &edge : edges) {
+            G.addEdge(edge.u, edge.v, edge.weight);
+        }
+
+        dbsm.addEdges(edges);
+        dbsm.buildBMatching();
+        const auto dm = dbsm.getBMatching();
+        const auto dwm = dm.weight(G);
+
+        BSuitorMatcher bsm(G, b);
+        bsm.run();
+        bsm.buildBMatching();
+        const auto sm = bsm.getBMatching();
+        const auto wm = sm.weight(G);
+
+        EXPECT_EQ(dwm, wm);
+    }
+}
+
+TEST_F(MatcherGTest, testDynBSuitorRemoveEdges) {
+    for (int i = 0; i < 10; i++) {
+        Aux::Random::setSeed(i, true);
+
+        auto G = generateRandomWeightedGraph(100);
+
+        const count b = 6;
+        DynamicBSuitorMatcher dbsm(G, b);
+        dbsm.run();
+
+        std::vector<Edge> edges;
+        count m = 10;
+        for (auto j = 0; j < m; j++) {
+            const auto [u, v] = GraphTools::randomEdge(G);
+            edges.emplace_back(u, v, G.weight(u, v));
+            G.removeEdge(u, v);
+        }
+
+        dbsm.removeEdges(edges);
+        dbsm.buildBMatching();
+        const auto dm = dbsm.getBMatching();
+        const auto dwm = dm.weight(G);
+
+        BSuitorMatcher bsm(G, b);
+        bsm.run();
+        bsm.buildBMatching();
+        const auto sm = bsm.getBMatching();
+        const auto wm = sm.weight(G);
+
+        EXPECT_EQ(dwm, wm);
+    }
+}
+
 } // namespace NetworKit
