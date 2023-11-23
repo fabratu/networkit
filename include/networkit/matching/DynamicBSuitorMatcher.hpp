@@ -1,6 +1,7 @@
 #ifndef NETWORKIT_MATCHING_DYNAMIC_B_SUITOR_MATCHER_HPP_
 #define NETWORKIT_MATCHING_DYNAMIC_B_SUITOR_MATCHER_HPP_
 
+#include <set>
 #include <networkit/auxiliary/Log.hpp>
 #include <networkit/matching/BSuitorMatcher.hpp>
 
@@ -40,6 +41,7 @@ public:
     std::vector<Edge> edgeBatch;
     std::vector<node> affectedNodes;
     std::vector<bool> affected;
+    std::set<node> affectedNodesPerRun;
 
     void addEdge(WeightedEdge &edge) {
         std::vector<WeightedEdge> edges{edge};
@@ -52,6 +54,8 @@ public:
         removeEdges(edges);
     }
     void removeEdges(std::vector<Edge> &edges);
+
+    count getNumberOfAffected();
 };
 
 } // namespace NetworKit

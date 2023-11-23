@@ -151,6 +151,8 @@ void DynamicBSuitorMatcher::findAffectedNodes(node u, node v, Operation op) {
 }
 
 void DynamicBSuitorMatcher::updateAffectedNodes() {
+    affectedNodesPerRun.insert(affectedNodes.begin(), affectedNodes.end());
+
     while (affectedNodes.size() > 1) {
         const node x = affectedNodes.back();
         const auto y = Suitors.at(x)->partners.back();
@@ -159,6 +161,10 @@ void DynamicBSuitorMatcher::updateAffectedNodes() {
         affected[y.id] = false;
         affected[x] = false;
     }
+}
+
+count DynamicBSuitorMatcher::getNumberOfAffected() {
+    return affectedNodesPerRun.size();
 }
 
 } // namespace NetworKit
