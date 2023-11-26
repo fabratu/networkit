@@ -12,14 +12,14 @@ Graph MatrixMarketGraphReader::read(const std::string &path) {
     auto header = parser.getHeader();
     auto size = parser.getMatrixSize();
     auto weighted = true;
-    auto symmetric = true;
+    auto directed = false;
 
     if (header.field == MatrixMarketParser::Field::Pattern)
         weighted = false;
     if (header.symmetry == MatrixMarketParser::Symmetry::General)
-        symmetric = false;
+        directed = true;
 
-    Graph G(std::max(size.rows, size.columns), weighted);
+    Graph G(std::max(size.rows, size.columns), weighted, directed);
     std::string graphName =
         Aux::StringTools::split(Aux::StringTools::split(path, '/').back(), '.').front();
 
@@ -33,16 +33,16 @@ Graph MatrixMarketGraphReader::read(const std::string &path) {
         if (from == to)
             selfLoopCount++;
 
-        if (weighted && symmetric) {
+        if (weighted && directed) {
+            G.addEdge(from, to, *weight);
+        } else if (weighted && !directed) {
             G.addPartialEdge(unsafe, from, to, *weight);
             G.addPartialEdge(unsafe, to, from, *weight);
-        } else if (weighted && !symmetric) {
-            G.addPartialEdge(unsafe, from, to, *weight);
-        } else if (!weighted && symmetric) {
-            G.addPartialEdge(unsafe, from, to);
-            G.addPartialEdge(unsafe, to, from);
+        } else if (!weighted && directed) {
+            G.addEdge(from, to);
         } else {
             G.addPartialEdge(unsafe, from, to);
+            G.addPartialEdge(unsafe, to, from);
         }
 
         current_edge = parser.getNext(weighted);
