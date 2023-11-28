@@ -39,7 +39,7 @@ GraphBuilder::GraphBuilder(count n, bool weighted, bool directed)
 void GraphBuilder::reset(count n) {
     this->n = n;
     selfloops = 0;
-    outEdges.assign(n, std::vector<node>{});
+    outEdges.assign(n, std::vector<storednode>{});
     outEdgeWeights.assign(isWeighted() ? n : 0, std::vector<edgeweight>{}),
         inEdges.assign(isDirected() ? n : 0, std::vector<storednode>{}),
         inEdgeWeights.assign((isDirected() && isWeighted()) ? n : 0, std::vector<edgeweight>{});

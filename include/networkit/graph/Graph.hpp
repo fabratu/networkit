@@ -2979,7 +2979,7 @@ void Graph::sortEdges(Lambda lambda) {
 
     std::vector<std::vector<index>> indicesGlobal(omp_get_max_threads());
 
-    const auto sortAdjacencyArrays = [&](node u, std::vector<node> &adjList,
+    const auto sortAdjacencyArrays = [&](node u, std::vector<storednode> &adjList,
                                          std::vector<edgeweight> &weights,
                                          std::vector<edgeid> &edgeIds) -> void {
         auto &indices = indicesGlobal[omp_get_thread_num()];

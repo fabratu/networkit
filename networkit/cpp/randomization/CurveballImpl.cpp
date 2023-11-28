@@ -18,7 +18,7 @@ namespace CurveballDetails {
 
 using degree_vector = std::vector<count>;
 using trade_vector = std::vector<trade_descriptor>;
-using neighbour_vector = std::vector<node>;
+using neighbour_vector = std::vector<storednode>;
 using node_vector = std::vector<node>;
 using nodepair_vector = std::vector<std::pair<node, node>>;
 

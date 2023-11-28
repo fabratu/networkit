@@ -694,7 +694,7 @@ void Graph::removeEdge(node u, node v, bool maintainSortedEdges, bool maintainCo
     if (directed) {
         assert(ui != none);
 
-        erase<node>(v, ui, inEdges);
+        erase<storednode>(v, ui, inEdges);
         if (weighted) {
             erase<edgeweight>(v, ui, inEdgeWeights);
         }
