@@ -216,13 +216,15 @@ Graph NetworkitBinaryReader::readData(const T &source) {
                     if (id > omega)
                         omega = id;
                 }
-                if (!directed) {
-                    if (!G.addPartialEdge(unsafe, curr, add, weight, id, true))
-                        WARN("Not adding edge ", curr, "-", add, " since it is already present.");
-                } else {
-                    if (!G.addPartialOutEdge(unsafe, curr, add, weight, id, true))
-                        WARN("Not adding edge ", curr, "-", add, " since it is already present.");
-                }
+                G.addPartialEdge(unsafe, curr, add, weight, id, false);
+
+                // if (!directed) {
+                    // if (!G.addPartialEdge(unsafe, curr, add, weight, id, true))
+                        // WARN("Not adding edge ", curr, "-", add, " since it is already present.");
+                // } else {
+                    // if (!G.addPartialOutEdge(unsafe, curr, add, weight, id, true))
+                        // WARN("Not adding edge ", curr, "-", add, " since it is already present.");
+                // }
                 if (curr == add) {
                     selfLoops.fetch_add(1, std::memory_order_relaxed);
                 }
@@ -270,13 +272,15 @@ Graph NetworkitBinaryReader::readData(const T &source) {
                 }
                 if (!directed) {
                     if (curr != add) {
-                        if (G.addPartialEdge(unsafe, curr, add, weight, id, true))
-                            WARN("Not adding edge ", curr, "-", add,
-                                 " since it is already present.");
+                        G.addPartialEdge(unsafe, curr, add, weight, id, false)
+                        // if (G.addPartialEdge(unsafe, curr, add, weight, id, true))
+                            // WARN("Not adding edge ", curr, "-", add,
+                                //  " since it is already present.");
                     }
                 } else {
-                    if (!G.addPartialInEdge(unsafe, curr, add, weight, id, true))
-                        WARN("Not adding edge ", curr, "-", add, " since it is already present.");
+                    G.addPartialInEdge(unsafe, curr, add, weight, id, false)
+                    // if (!G.addPartialInEdge(unsafe, curr, add, weight, id, true))
+                        // WARN("Not adding edge ", curr, "-", add, " since it is already present.");
                 }
             }
         }
