@@ -272,13 +272,13 @@ Graph NetworkitBinaryReader::readData(const T &source) {
                 }
                 if (!directed) {
                     if (curr != add) {
-                        G.addPartialEdge(unsafe, curr, add, weight, id, false)
+                        G.addPartialEdge(unsafe, curr, add, weight, id, false);
                         // if (G.addPartialEdge(unsafe, curr, add, weight, id, true))
                             // WARN("Not adding edge ", curr, "-", add,
                                 //  " since it is already present.");
                     }
                 } else {
-                    G.addPartialInEdge(unsafe, curr, add, weight, id, false)
+                    G.addPartialInEdge(unsafe, curr, add, weight, id, false);
                     // if (!G.addPartialInEdge(unsafe, curr, add, weight, id, true))
                         // WARN("Not adding edge ", curr, "-", add, " since it is already present.");
                 }
