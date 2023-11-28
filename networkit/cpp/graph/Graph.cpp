@@ -278,7 +278,7 @@ void Graph::compactEdges() {
 }
 
 void Graph::sortEdges() {
-    std::vector<std::vector<node>> targetAdjacencies(upperNodeIdBound());
+    std::vector<std::vector<storednode>> targetAdjacencies(upperNodeIdBound());
     std::vector<std::vector<edgeweight>> targetWeight;
     std::vector<std::vector<edgeid>> targetEdgeIds;
 
@@ -631,7 +631,7 @@ void Graph::removeEdge(node u, node v, bool maintainSortedEdges, bool maintainCo
         storedNumberOfSelfLoops--;
 
     // remove edge for source node
-    erase<node>(u, vi, outEdges);
+    erase<storednode>(u, vi, outEdges);
     if (weighted) {
         erase<edgeweight>(u, vi, outEdgeWeights);
     }
@@ -646,7 +646,7 @@ void Graph::removeEdge(node u, node v, bool maintainSortedEdges, bool maintainCo
     }
     if (!directed && !isLoop) {
         // also remove edge for target node
-        erase<node>(v, ui, outEdges);
+        erase<storednode>(v, ui, outEdges);
         if (weighted) {
             erase<edgeweight>(v, ui, outEdgeWeights);
         }

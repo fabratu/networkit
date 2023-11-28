@@ -25,6 +25,7 @@ set(NETWORKIT_WITH_SANITIZERS "" CACHE STRING "Uses sanitizers during the compil
 set(NETWORKIT_RELEASE_LOGGING "AUTO" CACHE STRING "Do not compile log messages at levels TRACE or DEBUG (AUTO|ON|OFF)")
 set(NETWORKIT_PYTHON_RPATH "" CACHE STRING "Build specific rpath references.")
 set(NETWORKIT_EXT_TLX "" CACHE STRING "Absolute path for external tlx-library. If not set, extlibs/tlx is used")
+set(NETWORKIT_NODE_STORAGE "u64" CACHE STRING "Set the variable size for storing node ids (u32|u64)")
 
 set (NETWORKIT_CXX_STANDARD "17" CACHE STRING "CXX Version to compile with. Currently fixed to 17")
 
@@ -57,6 +58,12 @@ endif()
 # Compilation Flags
 set(NETWORKIT_CXX_FLAGS "")
 set(NETWORKIT_LINK_FLAGS "")
+
+if (NETWORKIT_NODE_STORAGE STREQUAL "u32")
+	set(NETWORKIT_CXX_FLAGS "${NETWORKIT_CXX_FLAGS} -DNETWORKIT_U32_NODES")
+elseif(NOT NETWORKIT_NODE_STORAGE STREQUAL "u64")
+	message(FATAL_ERROR "Unsupported setting ${NETWORKIT_NODE_STORAGE} for NETWORKIT_NODE_STORAGE")
+endif()
 
 if (NETWORKIT_QUIET_LOGGING)
 	set(NETWORKIT_CXX_FLAGS "-DNETWORKIT_QUIET_LOGGING")
