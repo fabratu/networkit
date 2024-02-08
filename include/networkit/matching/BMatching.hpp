@@ -78,6 +78,8 @@ public:
      */
     edgeweight weight(const Graph &G) const;
 
+    void reset();
+
     const std::vector<std::set<node>> &getMatches() const;
     std::vector<count> getB() const;
 

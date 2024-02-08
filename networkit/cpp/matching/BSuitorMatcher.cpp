@@ -128,6 +128,7 @@ bool BSuitorMatcher::isSymmetrical() const {
 
 void BSuitorMatcher::buildBMatching() {
     // TODO make parallel
+    M.reset();
     G->forNodes([&](node x) {
         assert(Suitors.at(x)->partners.size() <= b.at(x));
         for (auto y : Suitors.at(x)->partners) {
