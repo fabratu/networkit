@@ -95,6 +95,8 @@ void DynamicBSuitorMatcher::findAffectedNodes(node u, node v, Operation op) {
     node current = u;
     node partner = (op == Operation::Insert) ? v : none;
     auto heaviest = G->weight(current, v);
+    INFO("Starting findAffectedNodes with: \n cur: ", current, ", partner: ", partner, ", weight: ", heaviest);
+
     edgeweight prev = std::numeric_limits<edgeweight>::max();
 
     do {
@@ -120,6 +122,7 @@ void DynamicBSuitorMatcher::findAffectedNodes(node u, node v, Operation op) {
             }
         });
         done = true;
+        INFO("Done searching neighbors: \n cur: ", current, ", partner: ", partner, ", weight: ", heaviest);
 
         if (partner == none) {
             affected[current] = false;
@@ -130,12 +133,15 @@ void DynamicBSuitorMatcher::findAffectedNodes(node u, node v, Operation op) {
         const auto ps = Suitors.at(partner)->min;
         if (heaviest > ps.weight || (heaviest == ps.weight && current < ps.id)) {
             const auto y = Suitors.at(partner)->popMinIfFull();
+            INFO("Removing suitor", y.id, " from ", partner);
+            INFO("Inserting suitor", current, " into ", partner);
             Suitors.at(partner)->insert({current, heaviest});
 
             affected[partner] = true;
             affectedNodes.emplace_back(partner);
 
             if (y.id != none) {
+                INFO("Removing suitor", partner, " from ", y.id);
                 Suitors.at(y.id)->remove(partner);
                 affected[y.id] = true;
                 current = y.id;
@@ -147,16 +153,18 @@ void DynamicBSuitorMatcher::findAffectedNodes(node u, node v, Operation op) {
         prev = heaviest;
         partner = Suitors.at(current)->min.id;
         heaviest = Suitors.at(current)->min.weight;
+        INFO("End of current loop: \n cur: ", current, ", partner: ", partner, ", weight: ", heaviest);
     } while (!done);
 }
 
 void DynamicBSuitorMatcher::updateAffectedNodes() {
     affectedNodesPerRun.insert(affectedNodes.begin(), affectedNodes.end());
-
+    INFO("Starting updateAffectedNodes");
     while (affectedNodes.size() > 1) {
         const node x = affectedNodes.back();
         const auto y = Suitors.at(x)->partners.back();
         affectedNodes.pop_back();
+        INFO("Inserting suitor", x, " into ", y.id);
         Suitors.at(y.id)->insert({x, y.weight});
         affected[y.id] = false;
         affected[x] = false;
