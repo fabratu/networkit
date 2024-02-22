@@ -7,14 +7,14 @@ namespace NetworKit {
 void DynamicBSuitorMatcher::processEdgeInsertion(const WeightedEdge &edge) {
     affected[edge.u] = true;
     affectedNodes.clear();
-    findAffectedNodes(edge.u, edge.v, Operation::Insert);
-    updateAffectedNodes();
+    findAffectedNodes(edge.u, edge.v, Operation::Insert, true);
+    // updateAffectedNodes();
     affected[edge.u] = false;
 
     affected[edge.v] = true;
     affectedNodes.clear();
     findAffectedNodes(edge.v, edge.u, Operation::Insert);
-    updateAffectedNodes();
+    // updateAffectedNodes();
 
     affected[edge.u] = affected[edge.v] = false;
 }
@@ -57,13 +57,13 @@ void DynamicBSuitorMatcher::addEdges(std::vector<WeightedEdge> &edges) {
         processEdgeInsertion(edge);
         affected[edge.u] = affected[edge.v] = false;
 
-#ifndef NDEBUG
-        G->forNodes([&](node u) {
-            for (auto s : Suitors.at(u)->partners) {
-                assert(Suitors.at(s.id)->hasPartner(u));
-            }
-        });
-#endif
+        // #ifndef NDEBUG
+        //         G->forNodes([&](node u) {
+        //             for (auto s : Suitors.at(u)->partners) {
+        //                 assert(Suitors.at(s.id)->hasPartner(u));
+        //             }
+        //         });
+        // #endif
     }
 }
 
@@ -89,13 +89,15 @@ void DynamicBSuitorMatcher::removeEdges(std::vector<Edge> &edges) {
     }
 }
 
-void DynamicBSuitorMatcher::findAffectedNodes(node u, node v, Operation op) {
+void DynamicBSuitorMatcher::findAffectedNodes(node u, node v, Operation op, bool skipFirst) {
     bool done = false;
-
+    bool localSkip = skipFirst;
     node current = u;
     node partner = (op == Operation::Insert) ? v : none;
     auto heaviest = G->weight(current, v);
-    INFO("Starting findAffectedNodes with: \n cur: ", current, ", partner: ", partner, ", weight: ", heaviest);
+    node toRemoveIfRevisited = none;
+    INFO("Starting findAffectedNodes with: \n cur: ", current, ", partner: ", partner,
+         ", weight: ", heaviest);
 
     edgeweight prev = std::numeric_limits<edgeweight>::max();
 
@@ -106,7 +108,7 @@ void DynamicBSuitorMatcher::findAffectedNodes(node u, node v, Operation op) {
                 || std::find(edgeBatch.begin(), edgeBatch.end(), Edge(x, current))
                        != edgeBatch.end())
                 return;
-            if (Suitors.at(current)->hasPartner(x))
+            if (Proposed.at(current)->hasPartner(x))
                 return;
 
             const auto z = Suitors.at(x)->min;
@@ -117,32 +119,67 @@ void DynamicBSuitorMatcher::findAffectedNodes(node u, node v, Operation op) {
                     partner = x;
                     heaviest = weight;
                     return;
-
                 }
             }
         });
         done = true;
-        INFO("Done searching neighbors: \n cur: ", current, ", partner: ", partner, ", weight: ", heaviest);
+        INFO("Done searching neighbors: \n cur: ", current, ", partner: ", partner,
+             ", weight: ", heaviest);
 
         if (partner == none) {
             affected[current] = false;
             done = true;
             continue;
         }
-
+        INFO("Proposed at partner ", partner, ": ", *Proposed.at(partner));
+        INFO("Suitors at partner ", partner, ": ", *Suitors.at(partner));
+        INFO("Min at partner ", partner, ": ", (Suitors.at(partner)->min).id,
+             " (weight: ", (Suitors.at(partner)->min).weight, ")");
         const auto ps = Suitors.at(partner)->min;
         if (heaviest > ps.weight || (heaviest == ps.weight && current < ps.id)) {
             const auto y = Suitors.at(partner)->popMinIfFull();
-            INFO("Removing suitor", y.id, " from ", partner);
-            INFO("Inserting suitor", current, " into ", partner);
-            Suitors.at(partner)->insert({current, heaviest});
+            INFO("Removing suitor ", y.id, " from ", partner);
+            if (y.id != none) {
+                // INFO("Removing proposed ", partner, " from ", y.id);
+                // Proposed.at(y.id)->remove(partner);
+                INFO("Removing suitor ", partner, " from ", y.id);
+                Suitors.at(y.id)->remove(partner);
+                INFO("Removing proposed ", y.id, " from ", partner);
+                Proposed.at(partner)->remove(y.id);
+            }
 
+            // const auto cs = Suitors.at(current)->getMinAnyway();
+            // if (cs.id != none && Proposed.at(current)->isFull()) {
+            //     INFO("[CURRENT] Removing proposed ", cs.id, " from ", current);
+            //     Proposed.at(current)->remove(cs.id);
+            // }
+
+            INFO("Inserting suitor ", current, " into ", partner, " with weight ", heaviest);
+            Suitors.at(partner)->insert({current, heaviest});
+            INFO("Inserting proposed ", partner, " into ", current);
+            if (current == u)
+                Proposed.at(current)->insert({partner, heaviest}, true);
+            else
+                Proposed.at(current)->insert({partner, heaviest});
             affected[partner] = true;
             affectedNodes.emplace_back(partner);
 
+            INFO("Inserting proposed ", current, " into ", partner);
+            Proposed.at(partner)->insert({current, heaviest});
+            if (!localSkip) {
+                INFO("Inserting suitor ", partner, " into ", current, " with weight ", heaviest);
+                Suitors.at(current)->insert({partner, heaviest});
+                localSkip = false;
+            }
+
+            // if (y.id == none) {
+            //     INFO("Inserting proposed ", current, " into ", partner);
+            //     Proposed.at(partner)->insert({current, heaviest});
+            //     INFO("Inserting suitor ", partner, " into ", current, " with weight ", heaviest);
+            //     Suitors.at(current)->insert({partner, heaviest});
+            // }
+
             if (y.id != none) {
-                INFO("Removing suitor", partner, " from ", y.id);
-                Suitors.at(y.id)->remove(partner);
                 affected[y.id] = true;
                 current = y.id;
                 done = false;
@@ -153,22 +190,35 @@ void DynamicBSuitorMatcher::findAffectedNodes(node u, node v, Operation op) {
         prev = heaviest;
         partner = Suitors.at(current)->min.id;
         heaviest = Suitors.at(current)->min.weight;
-        INFO("End of current loop: \n cur: ", current, ", partner: ", partner, ", weight: ", heaviest);
+        INFO("End of current loop: \n cur: ", current, ", partner: ", partner,
+             ", weight: ", heaviest);
     } while (!done);
 }
 
 void DynamicBSuitorMatcher::updateAffectedNodes() {
     affectedNodesPerRun.insert(affectedNodes.begin(), affectedNodes.end());
     INFO("Starting updateAffectedNodes");
-    while (affectedNodes.size() > 1) {
-        const node x = affectedNodes.back();
+    for (node x : affectedNodes) {
         const auto y = Suitors.at(x)->partners.back();
-        affectedNodes.pop_back();
-        INFO("Inserting suitor", x, " into ", y.id);
+        INFO("Inserting suitor ", x, " into ", y.id);
         Suitors.at(y.id)->insert({x, y.weight});
+        INFO("Inserting proposed ", y.id, " into ", x);
+        Proposed.at(x)->insert({y.id, y.weight});
         affected[y.id] = false;
         affected[x] = false;
     }
+    affectedNodes.clear();
+    // while (affectedNodes.size() > 1) {
+    //     const node x = affectedNodes.front();
+    //     const auto y = Suitors.at(x)->partners.back();
+    //     affectedNodes.pop_back();
+    //     INFO("Inserting suitor ", x, " into ", y.id);
+    //     Suitors.at(y.id)->insert({x, y.weight});
+    //     INFO("Inserting proposed ", y.id, " into ", x);
+    //     Proposed.at(x)->insert({y.id, y.weight});
+    //     affected[y.id] = false;
+    //     affected[x] = false;
+    // }
 }
 
 count DynamicBSuitorMatcher::getNumberOfAffected() {

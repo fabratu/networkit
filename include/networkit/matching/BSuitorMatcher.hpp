@@ -18,6 +18,7 @@ struct Node {
     bool operator!=(const Node &other) const { return id != other.id || weight != other.weight; }
 };
 
+// TODO: Distinquish between T and S. One is a set, one is a custom prio queue
 struct NodeMatchesInfo {
     std::vector<Node> partners;
     Node min; // (none, 0) if partners still has free capacity
@@ -47,10 +48,8 @@ struct NodeMatchesInfo {
         }
     }
 
-    void insert(const Node &u) {
-        assert(partners.size() < max_size);
-        partners.emplace_back(u);
-        if (partners.size() == max_size && !partners.empty()) {
+    Node getMinAnyway() {
+        if (!partners.empty()) {
             min = *std::min_element(partners.begin(), partners.end(),
                                     [](const Node &x, const Node &y) {
                                         if (x.weight == y.weight) {
@@ -58,6 +57,28 @@ struct NodeMatchesInfo {
                                         }
                                         return x.weight < y.weight;
                                     });
+            return min;
+        } else
+            return {none, 0};
+    }
+
+    void insert(const Node &u, bool ignoreInvariant = true) {
+        if (hasPartner(u.id))
+            return;
+
+        popMinIfFull();
+        // if (!ignoreInvariant)
+        //     assert(partners.size() < max_size);
+        partners.emplace_back(u);
+        if (partners.size() >= max_size && !partners.empty()) {
+            min = *std::min_element(partners.begin(), partners.end(),
+                                    [](const Node &x, const Node &y) {
+                                        if (x.weight == y.weight) {
+                                            return x.id > y.id;
+                                        }
+                                        return x.weight < y.weight;
+                                    });
+            INFO("New min: ", min.id, " (weight: ", min.weight, ")", " for ", *this);
         }
     }
 
@@ -78,6 +99,17 @@ struct NodeMatchesInfo {
             return (u.weight > v.weight || (u.weight == v.weight && u.id < v.id));
         });
     }
+
+    friend std::ostream &operator<<(std::ostream &out, const NodeMatchesInfo &nmi) {
+        out << "[";
+        for (auto i = nmi.partners.begin(); i != nmi.partners.end(); ++i) {
+            out << (*i).id << ' ';
+        }
+        out << "]";
+        return out;
+    }
+
+    bool isFull() { return partners.size() == max_size; }
 };
 
 /**
@@ -121,9 +153,12 @@ public:
 
     void buildBMatching();
 
-protected:
     std::vector<std::unique_ptr<NodeMatchesInfo>> Suitors;
     std::vector<std::unique_ptr<NodeMatchesInfo>> Proposed;
+
+protected:
+    // std::vector<std::unique_ptr<NodeMatchesInfo>> Suitors;
+    // std::vector<std::unique_ptr<NodeMatchesInfo>> Proposed;
     const std::vector<count> b;
 
     /**

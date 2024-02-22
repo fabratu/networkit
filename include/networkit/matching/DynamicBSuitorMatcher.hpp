@@ -21,7 +21,7 @@ class DynamicBSuitorMatcher final : public BSuitorMatcher {
     void processEdgeInsertion(const WeightedEdge &edge);
     void processEdgeRemoval(const Edge &edge);
 
-    void findAffectedNodes(node u, node v, Operation op);
+    void findAffectedNodes(node u, node v, Operation op, bool skipFirst = false);
     void updateAffectedNodes();
 
 public:
