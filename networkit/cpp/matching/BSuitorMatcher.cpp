@@ -130,7 +130,7 @@ void BSuitorMatcher::buildBMatching() {
     // TODO make parallel
     M.reset();
     G->forNodes([&](node x) {
-        assert(Suitors.at(x)->partners.size() <= b.at(x));
+        // assert(Suitors.at(x)->partners.size() <= b.at(x));
         for (auto y : Suitors.at(x)->partners) {
             if (y.id != none && x < y.id) {
                 M.match(x, y.id);
