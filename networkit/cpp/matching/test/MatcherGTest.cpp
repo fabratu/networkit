@@ -359,5 +359,85 @@ TEST_F(MatcherGTest, testDynBSuitorRemoveEdges) {
         EXPECT_EQ(dwm, wm);
     }
 }
+TEST_F(MatcherGTest, testDynBSuitorMulti) {
+    Aux::Log::setLogLevel("INFO");
+    NetworKit::Graph G = NetworKit::Graph(10, true, false);
 
+    G.addEdge(0, 4, 1);
+    G.addEdge(0, 5, 1);
+    G.addEdge(0, 6, 1);
+    G.addEdge(0, 7, 21);
+    G.addEdge(0, 8, 30);
+
+    G.addEdge(1, 2, 1);
+    G.addEdge(1, 4, 1);
+    G.addEdge(1, 6, 1);
+    G.addEdge(1, 7, 56);
+    G.addEdge(1, 9, 93);
+
+    G.addEdge(2, 4, 59);
+    G.addEdge(2, 5, 70);
+    G.addEdge(2, 8, 1);
+    G.addEdge(2, 9, 65);
+
+    G.addEdge(3, 4, 1);
+    G.addEdge(3, 6, 1);
+    G.addEdge(3, 8, 50);
+
+    G.addEdge(4, 6, 60);
+    G.addEdge(4, 7, 48);
+
+    G.addEdge(7, 8, 40);
+
+    BSuitorMatcher bsm(G, 2);
+    bsm.run();
+    bsm.buildBMatching();
+    auto sm = bsm.getBMatching();
+
+    auto res = sm.getMatches();
+
+    // auto idx = 0;
+    // INFO("Initial matching:");
+    // for (auto &u : res) {
+    //     INFO(idx, ": ");
+    //     for (auto v : u) {
+    //         INFO(v, ", ");
+    //     }
+    //     idx++;
+    // }
+
+    NetworKit::DynamicBSuitorMatcher dynBMatcher(G, 2);
+    dynBMatcher.run();
+    dynBMatcher.buildBMatching();
+
+    auto bMatching = dynBMatcher.getBMatching();
+    auto bres = bMatching.getMatches();
+
+    for (size_t i = 0; i < res.size(); i++) {
+        INFO(res.at(i), " vs. ", bres.at(i));
+    }
+
+    G.addEdge(7, 9, 84);
+
+    BSuitorMatcher bsm2(G, 2);
+    bsm2.run();
+    bsm2.buildBMatching();
+    auto sm2 = bsm2.getBMatching();
+
+    auto res2 = sm2.getMatches();
+
+    NetworKit::WeightedEdge newEdge(7, 9, 84);
+    dynBMatcher.addEdge(newEdge);
+    dynBMatcher.buildBMatching();
+    auto bMatching2 = dynBMatcher.getBMatching();
+    auto bres2 = bMatching2.getMatches();
+
+    for (size_t i = 0; i < res2.size(); i++) {
+        INFO(res2.at(i), " vs. ", bres2.at(i));
+    }
+
+    // for (size_t i = 0; i < dynBMatcher.Proposed.size(); i++) {
+    //     INFO(*bsm2.Proposed.at(i), " vs. ", *dynBMatcher.Proposed.at(i));
+    // }
+}
 } // namespace NetworKit

@@ -47,10 +47,15 @@ struct NodeMatchesInfo {
         }
     }
 
-    void insert(const Node &u) {
-        assert(partners.size() < max_size);
+    Node insert(const Node &u) {
+        if (hasPartner(u.id))
+            return {none, 0};
+
+        Node prevMin = popMinIfFull();
+        // assert(partners.size() < max_size);
+
         partners.emplace_back(u);
-        if (partners.size() == max_size && !partners.empty()) {
+        if (partners.size() >= max_size && !partners.empty()) {
             min = *std::min_element(partners.begin(), partners.end(),
                                     [](const Node &x, const Node &y) {
                                         if (x.weight == y.weight) {
@@ -59,6 +64,8 @@ struct NodeMatchesInfo {
                                         return x.weight < y.weight;
                                     });
         }
+
+        return prevMin;
     }
 
     void remove(node u) {
@@ -77,6 +84,15 @@ struct NodeMatchesInfo {
         std::sort(partners.begin(), partners.end(), [](const Node &u, const Node &v) {
             return (u.weight > v.weight || (u.weight == v.weight && u.id < v.id));
         });
+    }
+
+    friend std::ostream &operator<<(std::ostream &out, const NodeMatchesInfo &nmi) {
+        out << "[";
+        for (auto i = nmi.partners.begin(); i != nmi.partners.end(); ++i) {
+            out << (*i).id << ' ';
+        }
+        out << "]";
+        return out;
     }
 };
 
