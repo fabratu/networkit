@@ -52,7 +52,7 @@ struct NodeMatchesInfo {
             return {none, 0};
 
         Node prevMin = popMinIfFull();
-        // assert(partners.size() < max_size);
+        assert(partners.size() < max_size);
 
         partners.emplace_back(u);
         if (partners.size() >= max_size && !partners.empty()) {
