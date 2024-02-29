@@ -22,6 +22,7 @@ class DynamicBSuitorMatcher final : public BSuitorMatcher {
     void processEdgeRemoval(const Edge &edge);
 
     void findAffectedNodes(node u, node v, Operation op);
+    void findAffectedNodes2(node u, node v, Operation op);
     void updateAffectedNodes();
 
 public:

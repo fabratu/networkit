@@ -7,13 +7,13 @@ namespace NetworKit {
 void DynamicBSuitorMatcher::processEdgeInsertion(const WeightedEdge &edge) {
     affected[edge.u] = true;
     affectedNodes.clear();
-    findAffectedNodes(edge.u, edge.v, Operation::Insert);
+    findAffectedNodes2(edge.u, edge.v, Operation::Insert);
     updateAffectedNodes();
     affected[edge.u] = false;
 
     affected[edge.v] = true;
     affectedNodes.clear();
-    findAffectedNodes(edge.v, edge.u, Operation::Insert);
+    findAffectedNodes2(edge.v, edge.u, Operation::Insert);
     updateAffectedNodes();
 
     affected[edge.u] = affected[edge.v] = false;
@@ -26,14 +26,14 @@ void DynamicBSuitorMatcher::processEdgeRemoval(const Edge &edge) {
     affected[edge.u] = affected[edge.v] = true;
     affectedNodes.clear();
     affectedNodes.emplace_back(edge.u);
-    findAffectedNodes(edge.u, edge.v, Operation::Remove);
+    findAffectedNodes2(edge.u, edge.v, Operation::Remove);
     updateAffectedNodes();
     affected[edge.u] = false;
 
     affected[edge.v] = true;
     affectedNodes.clear();
     affectedNodes.emplace_back(edge.v);
-    findAffectedNodes(edge.v, edge.u, Operation::Remove);
+    findAffectedNodes2(edge.v, edge.u, Operation::Remove);
     updateAffectedNodes();
     affected[edge.v] = false;
 }
@@ -57,13 +57,13 @@ void DynamicBSuitorMatcher::addEdges(std::vector<WeightedEdge> &edges) {
         processEdgeInsertion(edge);
         affected[edge.u] = affected[edge.v] = false;
 
-        // #ifndef NDEBUG
-        //         G->forNodes([&](node u) {
-        //             for (auto s : Suitors.at(u)->partners) {
-        //                 assert(Suitors.at(s.id)->hasPartner(u));
-        //             }
-        //         });
-        // #endif
+#ifndef NDEBUG
+        G->forNodes([&](node u) {
+            for (auto s : Suitors.at(u)->partners) {
+                assert(Suitors.at(s.id)->hasPartner(u));
+            }
+        });
+#endif
     }
 }
 
@@ -147,9 +147,9 @@ void DynamicBSuitorMatcher::findAffectedNodes(node u, node v, Operation op) {
 
             INFO("Inserting suitor ", current, " into ", partner);
             Node newS = Suitors.at(partner)->insert({current, heaviest});
-            if (newS.id != none) {
-                Suitors.at(newS.id)->remove(partner);
-            }
+            // if (newS.id != none) {
+            //     Suitors.at(newS.id)->remove(partner);
+            // }
             affected[partner] = true;
             affectedNodes.emplace_back(partner);
 
@@ -168,6 +168,88 @@ void DynamicBSuitorMatcher::findAffectedNodes(node u, node v, Operation op) {
         heaviest = Suitors.at(current)->min.weight;
         INFO("End of current loop: \n cur: ", current, ", partner: ", partner,
              ", weight: ", heaviest);
+    } while (!done);
+}
+
+void DynamicBSuitorMatcher::findAffectedNodes2(node u, node v, Operation op) {
+    bool done = false;
+
+    node current = u;
+    node partner = (op == Operation::Insert) ? v : none;
+    auto heaviest = G->weight(current, v);
+    INFO("Starting findAffectedNodes with: \n cur: ", current, ", partner: ", partner,
+         ", weight: ", heaviest);
+
+    edgeweight prev = std::numeric_limits<edgeweight>::max();
+
+    do {
+        // line 8
+        done = true;
+
+        // line 9
+        G->forNeighborsOf(current, [&](node x, edgeweight weight) {
+            // ignore edges that that still need to be processed
+            if (std::find(edgeBatch.begin(), edgeBatch.end(), Edge(current, x)) != edgeBatch.end()
+                || std::find(edgeBatch.begin(), edgeBatch.end(), Edge(x, current))
+                       != edgeBatch.end())
+                return;
+            if (Suitors.at(current)->hasPartner(x))
+                return;
+
+            const auto z = Suitors.at(x)->min;
+            if (!affected[x] || affected[x] || (op == Operation::Insert && (x == u || x == v))) {
+                if ((weight > heaviest || (weight == heaviest && x < partner))
+                    && (weight > z.weight || (weight == z.weight && current < z.id))
+                    && (weight <= prev)) {
+                    partner = x;
+                    heaviest = weight;
+                    return;
+                }
+            }
+        });
+        INFO("Done searching neighbors: \n cur: ", current, ", partner: ", partner,
+             ", weight: ", heaviest);
+
+        // line 10-12
+        if (partner == none || heaviest < Suitors.at(partner)->min.weight
+            || (heaviest == Suitors.at(partner)->min.weight
+                && current > Suitors.at(partner)->min.id)) {
+            affected[current] = false;
+            break;
+        }
+
+        INFO("Suitors at current ", current, ": ", *Suitors.at(current));
+        INFO("Suitors at partner ", partner, ": ", *Suitors.at(partner));
+        INFO("Min at partner ", partner, ": ", (Suitors.at(partner)->min).id,
+             " (weight: ", (Suitors.at(partner)->min).weight, ")");
+
+        // line 13-15
+        INFO("Inserting suitor ", current, " into ", partner);
+        Node y = Suitors.at(partner)->insert({current, heaviest});
+        affected[partner] = true;
+        affectedNodes.emplace_back(partner);
+
+        if (y.id != none) {
+            INFO("Removing suitor ", y.id, " from ", partner);
+        }
+
+        // line 16-20
+        if (y.id != none) {
+            INFO("Suitors at y ", y.id, ": ", *Suitors.at(y.id));
+
+            INFO("Removing suitor ", partner, " from ", y.id);
+            Suitors.at(y.id)->remove(partner);
+            affected[y.id] = true;
+            current = y.id;
+            done = false;
+        }
+
+        // line 21-23
+        prev = heaviest;
+        partner = Suitors.at(current)->min.id;
+        heaviest = Suitors.at(current)->min.weight;
+        // INFO("End of current loop: \n cur: ", current, ", partner: ", partner,
+        //      ", weight: ", heaviest);
     } while (!done);
 }
 
