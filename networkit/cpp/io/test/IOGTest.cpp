@@ -927,6 +927,7 @@ TEST_F(IOGTest, testNetworkitBinaryKonectInMemory) {
 }
 
 TEST_F(IOGTest, testNetworkitBinaryKonectIndexed) {
+    Aux::Log::setLogLevel("DEBUG");
     KONECTGraphReader reader2;
     Graph G = reader2.read("input/foodweb-baydry.konect");
     G.indexEdges();

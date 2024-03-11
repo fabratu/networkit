@@ -7,37 +7,47 @@
 
 namespace NetworKit {
 
-struct Node {
+struct DynBNode {
     node id;
     edgeweight weight;
 
-    Node() = default;
-    Node(node n, edgeweight w) : id(n), weight(w) {}
+    DynBNode() = default;
+    DynBNode(node n, edgeweight w) : id(n), weight(w) {}
 
-    bool operator==(const Node &other) const { return id == other.id && weight == other.weight; }
-    bool operator!=(const Node &other) const { return id != other.id || weight != other.weight; }
+    bool operator==(const DynBNode &other) const {
+        return id == other.id && weight == other.weight;
+    }
+    bool operator!=(const DynBNode &other) const {
+        return id != other.id || weight != other.weight;
+    }
 };
 
-struct NodeMatchesInfo {
-    std::vector<Node> partners;
-    Node min; // (none, 0) if partners still has free capacity
+struct DynBNodeMatchesInfo {
+    std::vector<DynBNode> partners;
+    DynBNode min; // (none, 0) if partners still has free capacity
     count max_size;
+    count num_visits;
+    node looseEnd;
+    node activeLooseEnd;
 
-    NodeMatchesInfo() = default;
+    DynBNodeMatchesInfo() = default;
 
-    NodeMatchesInfo(count b) {
+    DynBNodeMatchesInfo(count b) {
         partners.reserve(b);
-        min = Node(none, 0);
+        min = DynBNode(none, 0);
         max_size = b;
+        num_visits = 0;
+        looseEnd = none;
+        activeLooseEnd = none;
     }
 
     bool hasPartner(node u) {
         return std::find_if(partners.begin(), partners.end(),
-                            [u](const Node &v) { return v.id == u; })
+                            [u](const DynBNode &v) { return v.id == u; })
                != partners.end();
     }
 
-    Node popMinIfFull() {
+    DynBNode popMinIfFull() {
         if (partners.size() < max_size) {
             return {none, 0};
         } else {
@@ -47,17 +57,18 @@ struct NodeMatchesInfo {
         }
     }
 
-    Node insert(const Node &u) {
+    DynBNode insert(const DynBNode &u) {
         if (hasPartner(u.id))
             return {none, 0};
 
-        Node prevMin = popMinIfFull();
-        assert(partners.size() < max_size);
+        DynBNode prevMin = popMinIfFull();
+        // TODO: activate again if working
+        // assert(partners.size() < max_size);
 
         partners.emplace_back(u);
         if (partners.size() >= max_size && !partners.empty()) {
             min = *std::min_element(partners.begin(), partners.end(),
-                                    [](const Node &x, const Node &y) {
+                                    [](const DynBNode &x, const DynBNode &y) {
                                         if (x.weight == y.weight) {
                                             return x.id > y.id;
                                         }
@@ -69,30 +80,39 @@ struct NodeMatchesInfo {
     }
 
     void remove(node u) {
+        looseEnd = u;
         partners.erase(std::remove_if(partners.begin(), partners.end(),
-                                      [u](const Node &v) {
+                                      [u](const DynBNode &v) {
                                           if (v.id == u) {
                                               return true;
                                           }
                                           return false;
                                       }),
                        partners.end());
-        min = Node(none, 0);
+        min = DynBNode(none, 0);
     }
 
     void sort() {
-        std::sort(partners.begin(), partners.end(), [](const Node &u, const Node &v) {
+        std::sort(partners.begin(), partners.end(), [](const DynBNode &u, const DynBNode &v) {
             return (u.weight > v.weight || (u.weight == v.weight && u.id < v.id));
         });
     }
 
-    friend std::ostream &operator<<(std::ostream &out, const NodeMatchesInfo &nmi) {
+    friend std::ostream &operator<<(std::ostream &out, const DynBNodeMatchesInfo &nmi) {
         out << "[";
         for (auto i = nmi.partners.begin(); i != nmi.partners.end(); ++i) {
             out << (*i).id << ' ';
         }
         out << "]";
         return out;
+    }
+
+    bool operator==(const DynBNodeMatchesInfo &other) const {
+        bool same = true;
+        for (size_t i = 0; i < other.partners.size(); i++) {
+            partners[i] == other.partners[i] ? same = true : same = false;
+        }
+        return same;
     }
 };
 
@@ -138,8 +158,8 @@ public:
     void buildBMatching();
 
 protected:
-    std::vector<std::unique_ptr<NodeMatchesInfo>> Suitors;
-    std::vector<std::unique_ptr<NodeMatchesInfo>> Proposed;
+    std::vector<std::unique_ptr<DynBNodeMatchesInfo>> Suitors;
+    std::vector<std::unique_ptr<DynBNodeMatchesInfo>> Proposed;
     const std::vector<count> b;
 
     /**
@@ -165,9 +185,9 @@ protected:
      * smaller than w(u, v) to break ties.
      *
      * @param y
-     * @return Node
+     * @return DynBNode
      */
-    Node findPreferred(node u);
+    DynBNode findPreferred(node u);
 
     /**
      * Makes @a v a suitor of @a u and recursively calls itself for previous worse

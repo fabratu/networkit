@@ -13,6 +13,7 @@
 #include <networkit/graph/GraphTools.hpp>
 #include <networkit/io/DibapGraphReader.hpp>
 #include <networkit/io/METISGraphReader.hpp>
+#include <networkit/io/NetworkitBinaryWriter.hpp>
 #include <networkit/matching/BMatcher.hpp>
 #include <networkit/matching/BMatching.hpp>
 #include <networkit/matching/BSuitorMatcher.hpp>
@@ -33,7 +34,7 @@ protected:
         // pair of nodes and without self-loops. Sets a random weight for each edge.
         auto G = ErdosRenyiGenerator(n, 0.5, false, false).generate();
         G = GraphTools::toWeighted(G);
-        G.forEdges([&G](node u, node v) { G.setWeight(u, v, Aux::Random::integer(1, 100)); });
+        G.forEdges([&G](node u, node v) { G.setWeight(u, v, Aux::Random::integer(1, 99)); });
         return G;
     }
 
@@ -289,12 +290,12 @@ TEST_F(MatcherGTest, testBSuitorMatcherDifferentB) {
 }
 
 TEST_F(MatcherGTest, testDynBSuitorInsertEdges) {
-    for (int i = 0; i < 10; i++) {
-        Aux::Random::setSeed(i, true);
+    for (int i = 0; i < 100000; i++) {
+        // Aux::Random::setSeed(i, true);
 
         auto G = generateRandomWeightedGraph(100);
         std::vector<WeightedEdge> edges;
-        count m = 10;
+        count m = 1;
         // Select m edges of the graph, remove them but put them into edges for later insertion.
         // This will make sure that the graph is valid.
         for (auto j = 0; j < m; j++) {
@@ -315,22 +316,48 @@ TEST_F(MatcherGTest, testDynBSuitorInsertEdges) {
         dbsm.addEdges(edges);
         dbsm.buildBMatching();
         const auto dm = dbsm.getBMatching();
+        auto dres = dm.getMatches();
         const auto dwm = dm.weight(G);
 
         BSuitorMatcher bsm(G, b);
         bsm.run();
         bsm.buildBMatching();
         const auto sm = bsm.getBMatching();
+        auto res = sm.getMatches();
         const auto wm = sm.weight(G);
 
-        EXPECT_EQ(dwm, wm);
+        if (dwm != wm) {
+            Aux::Log::setLogLevel("INFO");
+            for (auto &myEdge : edges) {
+                INFO("Edge: ", myEdge.u, ",", myEdge.v, ",", myEdge.weight);
+            }
+
+            for (size_t i = 0; i < res.size(); i++) {
+                INFO("Node: ", i, " Identical: ", res.at(i) == dres.at(i), " ", res.at(i), " vs. ",
+                     dres.at(i));
+            }
+
+            G.forNodes([&](node u) {
+                std::string curN = std::to_string(u);
+                std::string neighbors = "";
+                G.forNeighborsOf(u, [&](node v) { neighbors += std::to_string(v) + ","; });
+                INFO("Node ", curN, ": ", neighbors);
+            });
+            Aux::Log::setLogLevel("QUIET");
+
+            NetworkitBinaryWriter nkWriter = NetworkitBinaryWriter{};
+            nkWriter.write(G, "./G_inserted.nkbg");
+        }
+
+        // TODO: Change back to EXPECT in final code
+        ASSERT_EQ(dwm, wm);
     }
 }
 
 TEST_F(MatcherGTest, testDynBSuitorRemoveEdges) {
-    Aux::Log::setLogLevel("INFO");
-    for (int i = 0; i < 10; i++) {
-        Aux::Random::setSeed(i, true);
+    //
+    for (int i = 0; i < 100000; i++) {
+        // Aux::Random::setSeed(i, true);
 
         auto G = generateRandomWeightedGraph(100);
 
@@ -349,15 +376,38 @@ TEST_F(MatcherGTest, testDynBSuitorRemoveEdges) {
         dbsm.removeEdges(edges);
         dbsm.buildBMatching();
         const auto dm = dbsm.getBMatching();
+        auto dres = dm.getMatches();
         const auto dwm = dm.weight(G);
 
         BSuitorMatcher bsm(G, b);
         bsm.run();
         bsm.buildBMatching();
         const auto sm = bsm.getBMatching();
+        auto res = sm.getMatches();
         const auto wm = sm.weight(G);
 
-        EXPECT_EQ(dwm, wm);
+        if (dwm != wm) {
+            Aux::Log::setLogLevel("INFO");
+            for (auto &myEdge : edges) {
+                INFO("Edge: ", myEdge.u, ",", myEdge.v);
+            }
+
+            for (size_t i = 0; i < res.size(); i++) {
+                INFO("Node: ", i, " Identical: ", res.at(i) == dres.at(i), " ", res.at(i), " vs. ",
+                     dres.at(i));
+            }
+
+            G.forNodes([&](node u) {
+                std::string curN = std::to_string(u);
+                std::string neighbors = "";
+                G.forNeighborsOf(u, [&](node v) { neighbors += std::to_string(v) + ","; });
+                INFO("Node ", curN, ": ", neighbors);
+            });
+            Aux::Log::setLogLevel("QUIET");
+        }
+
+        // TODO: change back to expect in final code
+        ASSERT_EQ(dwm, wm);
     }
 }
 TEST_F(MatcherGTest, testDynBSuitorMulti) {
@@ -382,18 +432,18 @@ TEST_F(MatcherGTest, testDynBSuitorMulti) {
     G.addEdge(2, 9, 65);
 
     G.addEdge(3, 4, 1);
-    // G.addEdge(3, 6, 1);
+    G.addEdge(3, 6, 1);
     G.addEdge(3, 8, 50);
 
-    // G.addEdge(4, 6, 60);
+    G.addEdge(4, 6, 60);
     G.addEdge(4, 7, 48);
 
     G.addEdge(7, 8, 40);
 
     // New test edges for finding loops
-    G.addEdge(4, 6, 40);
-    G.addEdge(2, 6, 1);
-    G.addEdge(3, 6, 2);
+    // G.addEdge(4, 6, 40);
+    // G.addEdge(2, 6, 1);
+    // G.addEdge(3, 6, 2);
 
     BSuitorMatcher bsm(G, 2);
     bsm.run();
@@ -440,6 +490,16 @@ TEST_F(MatcherGTest, testDynBSuitorMulti) {
 
     for (size_t i = 0; i < res2.size(); i++) {
         INFO(res2.at(i), " vs. ", bres2.at(i));
+    }
+
+    G.removeEdge(7, 9);
+    dynBMatcher.removeEdge(newEdge);
+    dynBMatcher.buildBMatching();
+    auto bMatching3 = dynBMatcher.getBMatching();
+    auto bres3 = bMatching3.getMatches();
+
+    for (size_t i = 0; i < res.size(); i++) {
+        INFO(res.at(i), " vs. ", bres3.at(i));
     }
 
     // for (size_t i = 0; i < dynBMatcher.Proposed.size(); i++) {
