@@ -20,8 +20,8 @@ BSuitorMatcher::BSuitorMatcher(const Graph &G, const std::vector<count> &b) : BM
     Suitors.reserve(n);
     Proposed.reserve(n);
     for (index i = 0; i < n; i++) {
-        Suitors.emplace_back(std::make_unique<NodeMatchesInfo>(b.at(i)));
-        Proposed.emplace_back(std::make_unique<NodeMatchesInfo>(b.at(i)));
+        Suitors.emplace_back(std::make_unique<DynBNodeMatchesInfo>(b.at(i)));
+        Proposed.emplace_back(std::make_unique<DynBNodeMatchesInfo>(b.at(i)));
     }
 }
 
@@ -72,16 +72,16 @@ void BSuitorMatcher::findSuitors(node cur) {
     }
 }
 
-Node BSuitorMatcher::findPreferred(node u) {
-    Node best = Node{none, 0};
+DynBNode BSuitorMatcher::findPreferred(node u) {
+    DynBNode best = DynBNode{none, 0};
 
     auto hasProposedTo = [&](node x) -> bool {
         return std::any_of(Proposed.at(u)->partners.begin(), Proposed.at(u)->partners.end(),
-                           [x](const Node &y) { return y.id == x; });
+                           [x](const DynBNode &y) { return y.id == x; });
     };
 
     for (auto n : G->weightNeighborRange(u)) {
-        const Node v = Node(n.first, n.second);
+        const DynBNode v = DynBNode(n.first, n.second);
         if (!hasProposedTo(v.id)) {
             if (v.weight > best.weight || (v.weight == best.weight && v.id < best.id)) {
                 const auto n_suitor_weight = Suitors.at(v.id)->min.weight;
@@ -98,8 +98,8 @@ Node BSuitorMatcher::findPreferred(node u) {
 
 void BSuitorMatcher::makeSuitor(node u, edgeweight w, node v) {
     auto smallest = Suitors.at(v)->popMinIfFull();
-    Suitors.at(v)->insert(Node(u, w));
-    Proposed.at(u)->insert(Node(v, w));
+    Suitors.at(v)->insert(DynBNode(u, w));
+    Proposed.at(u)->insert(DynBNode(v, w));
 
     if (smallest.id != none) {
         Proposed.at(smallest.id)->remove(v);

@@ -15,15 +15,32 @@ class DynamicBSuitorMatcher final : public BSuitorMatcher {
 
     bool isBetterMatch(node u, node v, edgeweight ew) const noexcept {
         const auto currentMatch = Suitors.at(u)->min;
-        return currentMatch.weight < ew || (currentMatch.weight == ew && v < currentMatch.id);
+        return currentMatch.id == none || currentMatch.weight < ew
+               || (currentMatch.weight == ew && v < currentMatch.id);
     }
 
     void processEdgeInsertion(const WeightedEdge &edge);
     void processEdgeRemoval(const Edge &edge);
 
+    // Original code
     void findAffectedNodes(node u, node v, Operation op);
-    void findAffectedNodes2(node u, node v, Operation op);
     void updateAffectedNodes();
+
+    // Using S-invariant consequently + update only if better choice
+    void findAffectedNodes2(node u, node v, Operation op);
+    void updateAffectedNodes2();
+
+    // Using T-invariant + S-invariant consequently
+    void findAffectedNodes3(node u, node v, Operation op);
+    void updateAffectedNodes3();
+
+    // Using T-invariant + S-invariant consequently + count visits
+    void findAffectedNodes4(node u, node v, Operation op);
+    void updateAffectedNodes4();
+
+    // Using S-invariant consequently + update only if better choice + fix loose end
+    void findAffectedNodes5(node u, node v, Operation op);
+    void updateAffectedNodes5();
 
 public:
     DynamicBSuitorMatcher(const Graph &G, const std::vector<count> &b) : BSuitorMatcher(G, b) {
