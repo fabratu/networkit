@@ -42,6 +42,21 @@ class DynamicBSuitorMatcher final : public BSuitorMatcher {
     void findAffectedNodes5(node u, node v, Operation op);
     void updateAffectedNodes5();
 
+    // Using S-invariant consequently + update only if better choice + search for unsaturated loose
+    // ends
+    void findAffectedNodes6(node u, node v, Operation op);
+    void updateAffectedNodes6();
+
+    // Using S-invariant consequently + update only if better choice + search for loose ends + allow
+    // circles for removal
+    void findAffectedNodes7(node u, node v, Operation op);
+    void updateAffectedNodes7(Operation op);
+
+    // Using S-invariant consequently + update only if better choice + search for saturated loose
+    // ends in paths
+    void findAffectedNodes8(node u, node v, Operation op);
+    void updateAffectedNodes8();
+
 public:
     DynamicBSuitorMatcher(const Graph &G, const std::vector<count> &b) : BSuitorMatcher(G, b) {
         affected.resize(G.upperNodeIdBound());
