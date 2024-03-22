@@ -290,13 +290,13 @@ TEST_F(MatcherGTest, testBSuitorMatcherDifferentB) {
 }
 
 TEST_F(MatcherGTest, testDynBSuitorInsertEdges) {
-    for (int i = 0; i < 1000000; i++) {
+    for (int i = 0; i < 10000; i++) {
         // Aux::Random::setSeed(i, true);
 
         auto G = generateRandomWeightedGraph(100);
         std::vector<WeightedEdge> edges;
         std::vector<edgeweight> edgeWeights;
-        count m = 1;
+        count m = 10;
         // Select m edges of the graph, remove them but put them into edges for later insertion.
         // This will make sure that the graph is valid.
         for (auto j = 0; j < m; j++) {
@@ -373,7 +373,7 @@ TEST_F(MatcherGTest, testDynBSuitorInsertEdges) {
 
 TEST_F(MatcherGTest, testDynBSuitorRemoveEdges) {
     //
-    for (int i = 0; i < 1000000; i++) {
+    for (int i = 0; i < 10000; i++) {
         // Aux::Random::setSeed(i, true);
         // Aux::Log::setLogLevel("INFO");
 
@@ -385,7 +385,7 @@ TEST_F(MatcherGTest, testDynBSuitorRemoveEdges) {
 
         std::vector<Edge> edges;
         std::vector<edgeweight> edgeWeights;
-        count m = 1;
+        count m = 10;
         for (auto j = 0; j < m; j++) {
             const auto [u, v] = GraphTools::randomEdge(G);
             edges.emplace_back(u, v, G.weight(u, v));

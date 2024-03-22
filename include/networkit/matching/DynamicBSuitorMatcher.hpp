@@ -22,40 +22,46 @@ class DynamicBSuitorMatcher final : public BSuitorMatcher {
     void processEdgeInsertion(const WeightedEdge &edge);
     void processEdgeRemoval(const Edge &edge);
 
-    // Original code
+    // New working code
     void findAffectedNodes(node u, node v, Operation op);
     void updateAffectedNodes();
 
-    // Using S-invariant consequently + update only if better choice
-    void findAffectedNodes2(node u, node v, Operation op);
-    void updateAffectedNodes2();
+    // // Original code
+    // void findAffectedNodes(node u, node v, Operation op);
+    // void updateAffectedNodes();
 
-    // Using T-invariant + S-invariant consequently
-    void findAffectedNodes3(node u, node v, Operation op);
-    void updateAffectedNodes3();
+    // // Using S-invariant consequently + update only if better choice
+    // void findAffectedNodes2(node u, node v, Operation op);
+    // void updateAffectedNodes2();
 
-    // Using T-invariant + S-invariant consequently + count visits
-    void findAffectedNodes4(node u, node v, Operation op);
-    void updateAffectedNodes4();
+    // // Using T-invariant + S-invariant consequently
+    // void findAffectedNodes3(node u, node v, Operation op);
+    // void updateAffectedNodes3();
 
-    // Using S-invariant consequently + update only if better choice + fix loose end
-    void findAffectedNodes5(node u, node v, Operation op);
-    void updateAffectedNodes5();
+    // // Using T-invariant + S-invariant consequently + count visits
+    // void findAffectedNodes4(node u, node v, Operation op);
+    // void updateAffectedNodes4();
 
-    // Using S-invariant consequently + update only if better choice + search for unsaturated loose
-    // ends
-    void findAffectedNodes6(node u, node v, Operation op);
-    void updateAffectedNodes6();
+    // // Using S-invariant consequently + update only if better choice + fix loose end
+    // void findAffectedNodes5(node u, node v, Operation op);
+    // void updateAffectedNodes5();
 
-    // Using S-invariant consequently + update only if better choice + search for loose ends + allow
-    // circles for removal
-    void findAffectedNodes7(node u, node v, Operation op);
-    void updateAffectedNodes7(Operation op);
+    // // Using S-invariant consequently + update only if better choice + search for unsaturated
+    // loose
+    // // ends
+    // void findAffectedNodes6(node u, node v, Operation op);
+    // void updateAffectedNodes6();
 
-    // Using S-invariant consequently + update only if better choice + search for saturated loose
-    // ends in paths
-    void findAffectedNodes8(node u, node v, Operation op);
-    void updateAffectedNodes8();
+    // // Using S-invariant consequently + update only if better choice + search for loose ends +
+    // allow
+    // // circles for removal
+    // void findAffectedNodes7(node u, node v, Operation op);
+    // void updateAffectedNodes7(Operation op);
+
+    // // Using S-invariant consequently + update only if better choice + search for saturated loose
+    // // ends in paths
+    // void findAffectedNodes8(node u, node v, Operation op);
+    // void updateAffectedNodes8();
 
 public:
     DynamicBSuitorMatcher(const Graph &G, const std::vector<count> &b) : BSuitorMatcher(G, b) {
