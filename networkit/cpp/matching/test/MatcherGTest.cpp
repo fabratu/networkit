@@ -5,6 +5,8 @@
  *      Author: Henning
  */
 
+#include <chrono>
+
 #include <gtest/gtest.h>
 
 #include <networkit/auxiliary/Random.hpp>
@@ -34,6 +36,7 @@ protected:
         // pair of nodes and without self-loops. Sets a random weight for each edge.
         auto G = ErdosRenyiGenerator(n, 0.5, false, false).generate();
         G = GraphTools::toWeighted(G);
+        G.removeMultiEdges();
         G.forEdges([&G](node u, node v) { G.setWeight(u, v, Aux::Random::integer(1, 99)); });
         return G;
     }
@@ -290,12 +293,12 @@ TEST_F(MatcherGTest, testBSuitorMatcherDifferentB) {
 }
 
 TEST_F(MatcherGTest, testDynBSuitorInsertEdges) {
-    for (int i = 0; i < 10000; i++) {
+    auto start = std::chrono::high_resolution_clock::now();
+    for (int i = 0; i < 100000; i++) {
         // Aux::Random::setSeed(i, true);
 
         auto G = generateRandomWeightedGraph(100);
         std::vector<WeightedEdge> edges;
-        std::vector<edgeweight> edgeWeights;
         count m = 10;
         // Select m edges of the graph, remove them but put them into edges for later insertion.
         // This will make sure that the graph is valid.
@@ -303,7 +306,6 @@ TEST_F(MatcherGTest, testDynBSuitorInsertEdges) {
             const auto [u, v] = GraphTools::randomEdge(G);
             assert(G.hasEdge(u, v));
             edges.emplace_back(u, v, G.weight(u, v));
-            edgeWeights.emplace_back(G.weight(u, v));
             G.removeEdge(u, v);
         }
 
@@ -311,11 +313,12 @@ TEST_F(MatcherGTest, testDynBSuitorInsertEdges) {
         DynamicBSuitorMatcher dbsm(G, b);
         dbsm.run();
 
-        for (auto &edge : edges) {
-            G.addEdge(edge.u, edge.v, edge.weight);
+        for (auto &myEdge : edges) {
+            G.addEdge(myEdge.u, myEdge.v, myEdge.weight);
         }
 
         dbsm.addEdges(edges);
+
         dbsm.buildBMatching();
         const auto dm = dbsm.getBMatching();
         auto dres = dm.getMatches();
@@ -330,24 +333,26 @@ TEST_F(MatcherGTest, testDynBSuitorInsertEdges) {
 
         if (dwm != wm) {
 
-            for (size_t i = 0; i < edges.size(); i++) {
-                G.removeEdge(edges[i].u, edges[i].v);
+            for (auto &myEdge : edges) {
+                G.removeEdge(myEdge.u, myEdge.v);
             }
 
             DynamicBSuitorMatcher dbsm2(G, b);
             dbsm2.run();
 
-            for (size_t i = 0; i < edges.size(); i++) {
-                G.addEdge(edges[i].u, edges[i].v, edgeWeights[i]);
+            for (auto &myEdge : edges) {
+                G.addEdge(myEdge.u, myEdge.v, myEdge.weight);
             }
 
             Aux::Log::setLogLevel("INFO");
 
-            dbsm2.addEdges(edges);
-            dbsm2.buildBMatching();
             for (auto &myEdge : edges) {
                 INFO("Edge: ", myEdge.u, ",", myEdge.v, ",", myEdge.weight);
             }
+
+            dbsm2.addEdges(edges);
+            dbsm2.buildBMatching();
+
 
             for (size_t i = 0; i < res.size(); i++) {
                 INFO("Node: ", i, " Identical: ", res.at(i) == dres.at(i), " ", res.at(i), " vs. ",
@@ -369,11 +374,58 @@ TEST_F(MatcherGTest, testDynBSuitorInsertEdges) {
         // TODO: Change back to EXPECT in final code
         ASSERT_EQ(dwm, wm);
     }
+    auto stop = std::chrono::high_resolution_clock::now();
+    Aux::Log::setLogLevel("INFO");
+    auto duration = std::chrono::duration_cast<std::chrono::microseconds>(stop - start);
+    INFO("Duration: ", duration.count());
+    Aux::Log::setLogLevel("QUIET");
+
 }
+
+TEST_F(MatcherGTest, testDynBSuitorBenchmarkInsert) {
+    uint64_t total = 0;
+    auto start = std::chrono::high_resolution_clock::now();
+    auto stop = std::chrono::high_resolution_clock::now();
+    for (int i = 0; i < 10; i++) {
+        // Aux::Random::setSeed(i, true);
+
+        auto G = generateRandomWeightedGraph(5000);
+        std::vector<WeightedEdge> edges;
+        count m = 10;
+        // Select m edges of the graph, remove them but put them into edges for later insertion.
+        // This will make sure that the graph is valid.
+        for (auto j = 0; j < m; j++) {
+            const auto [u, v] = GraphTools::randomEdge(G);
+            assert(G.hasEdge(u, v));
+            edges.emplace_back(u, v, G.weight(u, v));
+            G.removeEdge(u, v);
+        }
+
+        const count b = 6;
+        DynamicBSuitorMatcher dbsm(G, b);
+        dbsm.run();
+
+        for (auto &myEdge : edges) {
+            G.addEdge(myEdge.u, myEdge.v, myEdge.weight);
+        }
+
+        start = std::chrono::high_resolution_clock::now();
+        dbsm.addEdges(edges);
+        stop = std::chrono::high_resolution_clock::now();
+        total += std::chrono::duration_cast<std::chrono::microseconds>(stop - start).count();
+
+        dbsm.buildBMatching();
+    }
+    Aux::Log::setLogLevel("INFO");
+    INFO("Duration: ", total);
+    Aux::Log::setLogLevel("QUIET");
+
+}
+
 
 TEST_F(MatcherGTest, testDynBSuitorRemoveEdges) {
     //
-    for (int i = 0; i < 10000; i++) {
+    for (int i = 0; i < 1000000; i++) {
         // Aux::Random::setSeed(i, true);
         // Aux::Log::setLogLevel("INFO");
 
