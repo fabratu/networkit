@@ -27,7 +27,7 @@ class DynamicBSuitorMatcher final : public BSuitorMatcher {
         const auto currentMatch = Suitors.at(u)->min;
         bool isBetterMatch = currentMatch.id == none || currentMatch.weight < ew
                || (currentMatch.weight == ew && v < currentMatch.id);
-        INFO("Node ", u, " Min: ", currentMatch.id, " Min weight: ", currentMatch.weight, " ", ew, " is better: ", isBetterMatch);
+        // INFO("Node ", u, " Min: ", currentMatch.id, " Min weight: ", currentMatch.weight, " ", ew, " is better: ", isBetterMatch);
         return isBetterMatch;
     }
 
@@ -98,7 +98,7 @@ public:
     std::vector<Edge> edgeBatch;
     std::vector<node> affectedNodes;
     std::vector<bool> affected;
-    std::set<node> affectedNodesPerRun;
+    count affectedNodesPerRun;
     // TODO: support bigger batch-sizes
     std::unordered_map<std::pair<int,int>,size_t,PairHash> batchTracker;
 
@@ -106,7 +106,7 @@ public:
         std::vector<WeightedEdge> edges{edge};
         addEdges(edges);
     }
-    void addEdges(std::vector<WeightedEdge> &edges);
+    void addEdges(std::vector<WeightedEdge> &edges, bool sort = true);
 
     void removeEdge(Edge &edge) {
         std::vector<Edge> edges{edge};

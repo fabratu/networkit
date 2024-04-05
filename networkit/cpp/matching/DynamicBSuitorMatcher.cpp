@@ -28,7 +28,7 @@ void DynamicBSuitorMatcher::processEdgeInsertionNew(const WeightedEdge &edge) {
 
     node u = edge.u;
     node v = edge.v;
-    INFO("Start processing ", u, ",", v);
+    // INFO("Start processing ", u, ",", v);
     edgeweight w = G->weight(u,v);
     
     auto edgeHash = u < v ? std::make_pair(u, v) : std::make_pair(v, u);
@@ -37,8 +37,8 @@ void DynamicBSuitorMatcher::processEdgeInsertionNew(const WeightedEdge &edge) {
     DynBNode startU = Suitors.at(u)->insert({v,w});
     DynBNode startV = Suitors.at(v)->insert({u,w});
 
-    INFO("StartU: ", startU.id);
-    INFO("StartV: ", startV.id);
+    // INFO("StartU: ", startU.id);
+    // INFO("StartV: ", startV.id);
 
     if (startU.id != none) {
         Suitors.at(startU.id)->remove(u);
@@ -58,7 +58,7 @@ void DynamicBSuitorMatcher::processEdgeInsertionNew(const WeightedEdge &edge) {
 }
 
 void DynamicBSuitorMatcher::trackUpdatePath(size_t batchId, node start, bool recursiveCall) {
-    INFO("Start node: ", start);
+    // INFO("Start node: ", start);
     std::chrono::milliseconds ms = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch());
 
     bool done = false;
@@ -66,13 +66,13 @@ void DynamicBSuitorMatcher::trackUpdatePath(size_t batchId, node start, bool rec
     node current = start;
     node partner = Suitors.at(current)->min.id;
     auto heaviest = Suitors.at(current)->min.weight;
-    INFO("Starting findAffectedNodes8 for id ", batchId, " with: \n cur: ", current, ", partner: ", partner,
+    // INFO("Starting findAffectedNodes8 for id ", batchId, " with: \n cur: ", current, ", partner: ", partner,
          ", weight: ", heaviest);
 
     edgeweight prev = std::numeric_limits<edgeweight>::max();
 
     std::vector<DynBNode> looseEnds;
-    int numIter = 0;
+    // int numIter = 0;
 
     do {
         done = true;
@@ -81,7 +81,7 @@ void DynamicBSuitorMatcher::trackUpdatePath(size_t batchId, node start, bool rec
             auto edgeHash = current < x ? std::make_pair(current, x) : std::make_pair(x, current);
             // ignore edges that that still need to be processed
             if (batchTracker.contains(edgeHash)) {
-                INFO("Processing batch item: ", batchId, " Edge ", current, ",", x, " has id ", batchTracker[edgeHash]);
+                // INFO("Processing batch item: ", batchId, " Edge ", current, ",", x, " has id ", batchTracker[edgeHash]);
                 if (batchId < batchTracker[edgeHash])
                     return;
             }
@@ -90,7 +90,7 @@ void DynamicBSuitorMatcher::trackUpdatePath(size_t batchId, node start, bool rec
                 return;
 
             const auto z = Suitors.at(x)->min;
-            INFO("Node: ", current, " (weight:", heaviest, ") Evaluating ", x, " (edge_weight: ", weight, " min: ", z.id,
+            // INFO("Node: ", current, " (weight:", heaviest, ") Evaluating ", x, " (edge_weight: ", weight, " min: ", z.id,
                  ", min_weight: ", z.weight, ")");
 
             if ((weight > heaviest || (weight == heaviest && x < partner))
@@ -102,8 +102,8 @@ void DynamicBSuitorMatcher::trackUpdatePath(size_t batchId, node start, bool rec
             }
         });
 
-        INFO("Done searching neighbors: \n cur: ", current, ", partner: ", partner,
-             ", weight: ", heaviest);
+        // INFO("Done searching neighbors: \n cur: ", current, ", partner: ", partner,
+            //  ", weight: ", heaviest);
 
         // line 10-12
         if (partner == none || heaviest < Suitors.at(partner)->min.weight
@@ -112,27 +112,28 @@ void DynamicBSuitorMatcher::trackUpdatePath(size_t batchId, node start, bool rec
             break;
         }
 
-        INFO("Suitors at current ", current, ": ", *Suitors.at(current));
-        INFO("Suitors at partner ", partner, ": ", *Suitors.at(partner));
-        INFO("Min at partner ", partner, ": ", (Suitors.at(partner)->min).id,
-             " (weight: ", (Suitors.at(partner)->min).weight, ")");
+        // INFO("Suitors at current ", current, ": ", *Suitors.at(current));
+        // INFO("Suitors at partner ", partner, ": ", *Suitors.at(partner));
+        // INFO("Min at partner ", partner, ": ", (Suitors.at(partner)->min).id,
+        //      " (weight: ", (Suitors.at(partner)->min).weight, ")");
 
-        INFO("Inserting suitor ", current, " into ", partner, " and vice versa.");
+        // INFO("Inserting suitor ", current, " into ", partner, " and vice versa.");
         DynBNode prevCurrent = Suitors.at(current)->insert({partner, heaviest});
         DynBNode prevPartner = Suitors.at(partner)->insert({current, heaviest});
+        affectedNodesPerRun++;
 
         if(prevCurrent.id != none) {
-            INFO("Current was saturated. Removing current from prevCurrent ", prevCurrent.id);
+            // INFO("Current was saturated. Removing current from prevCurrent ", prevCurrent.id);
             Suitors.at(prevCurrent.id)->remove(current);
             looseEnds.emplace_back(DynBNode{prevCurrent.id,Suitors.at(prevCurrent.id)->min.weight});
         }
 
 
         if (prevPartner.id != none) {
-            INFO("Removing suitor ", prevPartner.id, " from ", partner);
-            INFO("Suitors at y ", prevPartner.id, ": ", *Suitors.at(prevPartner.id));
+            // INFO("Removing suitor ", prevPartner.id, " from ", partner);
+            // INFO("Suitors at y ", prevPartner.id, ": ", *Suitors.at(prevPartner.id));
 
-            INFO("Removing suitor ", partner, " from ", prevPartner.id);
+            // INFO("Removing suitor ", partner, " from ", prevPartner.id);
             Suitors.at(prevPartner.id)->remove(partner);
             // affected[y.id] = true;
             current = prevPartner.id;
@@ -143,12 +144,12 @@ void DynamicBSuitorMatcher::trackUpdatePath(size_t batchId, node start, bool rec
         prev = heaviest;
         partner = Suitors.at(current)->min.id;
         heaviest = Suitors.at(current)->min.weight;
-        numIter++;
+        // numIter++;
     } while (!done);
 
-    if (looseEnds.size() > 0) {
-        INFO("Recursive: ",recursiveCall ," Timestamp: " , ms.count(), " -> start: " ,start , " iter: " ,numIter , " loose ends: " , looseEnds.size() ," (" , looseEnds[0].id , ")" );
-    }
+    // if (looseEnds.size() > 0) {
+    //     INFO("Recursive: ",recursiveCall ," Timestamp: " , ms.count(), " -> start: " ,start , " iter: " ,numIter , " loose ends: " , looseEnds.size() ," (" , looseEnds[0].id , ")" );
+    // }
     for (auto &looseEnd : looseEnds) {
         
         trackUpdatePath(batchId, looseEnd.id, true);
@@ -159,7 +160,7 @@ void DynamicBSuitorMatcher::processEdgeRemovalNew(const Edge &edge) {
 
     node u = edge.u;
     node v = edge.v;
-    INFO("Start processing ", u, ",", v);
+    // INFO("Start processing ", u, ",", v);
     
     auto edgeHash = u < v ? std::make_pair(u, v) : std::make_pair(v, u);
     size_t batchId = batchTracker[edgeHash];
@@ -195,22 +196,25 @@ void DynamicBSuitorMatcher::processEdgeRemoval(const Edge &edge) {
     // affected[edge.v] = false;
 }
 
-void DynamicBSuitorMatcher::addEdges(std::vector<WeightedEdge> &edges) {
+void DynamicBSuitorMatcher::addEdges(std::vector<WeightedEdge> &edges, bool sort) {
 
+    affectedNodesPerRun = 0;
     batchTracker.clear();
 
-    auto convertToEdge = [](const WeightedEdge &weightedEdge) {
-        return Edge(weightedEdge.u, weightedEdge.v);
-    };
-    std::transform(edges.begin(), edges.end(), std::back_inserter(edgeBatch), convertToEdge);
-    std::sort(edges.begin(), edges.end(),
-              [](const WeightedEdge &a, const WeightedEdge &b) { return a.weight > b.weight; });
+    // auto convertToEdge = [](const WeightedEdge &weightedEdge) {
+    //     return Edge(weightedEdge.u, weightedEdge.v);
+    // };
+    // std::transform(edges.begin(), edges.end(), std::back_inserter(edgeBatch), convertToEdge);
+    if (sort) {
+        std::sort(edges.begin(), edges.end(),
+                [](const WeightedEdge &a, const WeightedEdge &b) { return a.weight > b.weight; });
+    }
 
     for (size_t i = 0; i < edges.size(); i++)
     {
         auto edgeHash = edges[i].u < edges[i].v ? std::make_pair(edges[i].u, edges[i].v) : std::make_pair(edges[i].v, edges[i].u);
         batchTracker[edgeHash] = i;
-        INFO("Batch: ", batchTracker[edgeHash], " -> ", edges[i].u, ",", edges[i].v);
+        // INFO("Batch: ", batchTracker[edgeHash], " -> ", edges[i].u, ",", edges[i].v);
     }
 
     // for (std::unordered_map<std::pair<int,int>,uint8_t,PairHash>::const_iterator it = batchTracker.begin();
@@ -225,13 +229,13 @@ void DynamicBSuitorMatcher::addEdges(std::vector<WeightedEdge> &edges) {
         if ((Suitors.at(edge.u)->hasPartner(edge.v) && Suitors.at(edge.v)->hasPartner(edge.u))
             || !isBetterMatch(edge.u, edge.v, edge.weight)
             || !isBetterMatch(edge.v, edge.u, edge.weight)) {
-            INFO("Edge ", edge.u, ",", edge.v,
-                 " ignored, since min(u): ", Suitors.at(edge.u)->min.weight,
-                 " min(v): ", Suitors.at(edge.v)->min.weight);
+            // INFO("Edge ", edge.u, ",", edge.v,
+            //      " ignored, since min(u): ", Suitors.at(edge.u)->min.weight,
+            //      " min(v): ", Suitors.at(edge.v)->min.weight);
             continue;
         }
-        INFO("Edge ", edge.u, ",", edge.v, " better choice. Min at ", edge.u, ": ", Suitors.at(edge.u)->min.weight, " Min at ", edge.v, ": ", Suitors.at(edge.v)->min.weight);
-        affectedNodes.clear();
+        // INFO("Edge ", edge.u, ",", edge.v, " better choice. Min at ", edge.u, ": ", Suitors.at(edge.u)->min.weight, " Min at ", edge.v, ": ", Suitors.at(edge.v)->min.weight);
+        // affectedNodes.clear();
 
         // processEdgeInsertion(edge);
         processEdgeInsertionNew(edge);
@@ -249,6 +253,7 @@ void DynamicBSuitorMatcher::addEdges(std::vector<WeightedEdge> &edges) {
 
 void DynamicBSuitorMatcher::removeEdges(std::vector<Edge> &edges) {
 
+    affectedNodesPerRun = 0;
     batchTracker.clear();
 
     for (size_t i = 0; i < edges.size(); i++)
@@ -264,7 +269,7 @@ void DynamicBSuitorMatcher::removeEdges(std::vector<Edge> &edges) {
         assert(!G->hasEdge(edge.u, edge.v));
         if (Suitors.at(edge.u)->hasPartner(edge.v)) {
 
-            affectedNodes.clear();
+            // affectedNodes.clear();
             // assert(numberOfAffectedEquals(0));
 
             // processEdgeRemoval(edge);
@@ -1414,7 +1419,7 @@ void DynamicBSuitorMatcher::updateAffectedNodes(uint8_t batchId) {
 }
 
 count DynamicBSuitorMatcher::getNumberOfAffected() {
-    return affectedNodesPerRun.size();
+    return affectedNodesPerRun;
 }
 
 } // namespace NetworKit
