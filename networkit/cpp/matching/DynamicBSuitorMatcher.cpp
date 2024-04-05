@@ -36,7 +36,7 @@ void DynamicBSuitorMatcher::processEdgeInsertionNew(const WeightedEdge &edge) {
 
     DynBNode startU = Suitors.at(u)->insert({v,w});
     DynBNode startV = Suitors.at(v)->insert({u,w});
-
+    affectedNodesPerRun += 2;
     // INFO("StartU: ", startU.id);
     // INFO("StartV: ", startV.id);
 
