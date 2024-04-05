@@ -67,7 +67,7 @@ void DynamicBSuitorMatcher::trackUpdatePath(size_t batchId, node start, bool rec
     node partner = Suitors.at(current)->min.id;
     auto heaviest = Suitors.at(current)->min.weight;
     // INFO("Starting findAffectedNodes8 for id ", batchId, " with: \n cur: ", current, ", partner: ", partner,
-         ", weight: ", heaviest);
+        //  ", weight: ", heaviest);
 
     edgeweight prev = std::numeric_limits<edgeweight>::max();
 
@@ -91,7 +91,7 @@ void DynamicBSuitorMatcher::trackUpdatePath(size_t batchId, node start, bool rec
 
             const auto z = Suitors.at(x)->min;
             // INFO("Node: ", current, " (weight:", heaviest, ") Evaluating ", x, " (edge_weight: ", weight, " min: ", z.id,
-                 ", min_weight: ", z.weight, ")");
+                //  ", min_weight: ", z.weight, ")");
 
             if ((weight > heaviest || (weight == heaviest && x < partner))
                 && (weight > z.weight || (weight == z.weight && current < z.id))
@@ -1231,7 +1231,7 @@ void DynamicBSuitorMatcher::findAffectedNodes(node u, node v, Operation op) {
 // }
 
 void DynamicBSuitorMatcher::updateAffectedNodes(uint8_t batchId) {
-    affectedNodesPerRun.insert(affectedNodes.begin(), affectedNodes.end());
+    affectedNodesPerRun += affectedNodes.size();
     INFO("Starting updateAffectedNodes8");
     while (affectedNodes.size() > 0) {
         const node x = affectedNodes.back();
