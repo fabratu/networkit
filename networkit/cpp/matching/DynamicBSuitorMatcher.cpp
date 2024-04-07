@@ -28,17 +28,17 @@ void DynamicBSuitorMatcher::processEdgeInsertionNew(const WeightedEdge &edge) {
 
     node u = edge.u;
     node v = edge.v;
-    // INFO("Start processing ", u, ",", v);
+    INFO("Start processing ", u, ",", v);
     edgeweight w = G->weight(u,v);
     
     auto edgeHash = u < v ? std::make_pair(u, v) : std::make_pair(v, u);
     size_t batchId = batchTracker[edgeHash];
 
-    DynBNode startU = Suitors.at(u)->insert({v,w});
-    DynBNode startV = Suitors.at(v)->insert({u,w});
+    DynBNode startU = Suitors.at(u)->insert({v,w}, false);
+    DynBNode startV = Suitors.at(v)->insert({u,w}, false);
     affectedNodesPerRun += 2;
-    // INFO("StartU: ", startU.id);
-    // INFO("StartV: ", startV.id);
+    INFO("StartU: ", startU.id);
+    INFO("StartV: ", startV.id);
 
     if (startU.id != none) {
         Suitors.at(startU.id)->remove(u);
@@ -118,8 +118,8 @@ void DynamicBSuitorMatcher::trackUpdatePath(size_t batchId, node start, bool rec
         //      " (weight: ", (Suitors.at(partner)->min).weight, ")");
 
         // INFO("Inserting suitor ", current, " into ", partner, " and vice versa.");
-        DynBNode prevCurrent = Suitors.at(current)->insert({partner, heaviest});
-        DynBNode prevPartner = Suitors.at(partner)->insert({current, heaviest});
+        DynBNode prevCurrent = Suitors.at(current)->insert({partner, heaviest}, false);
+        DynBNode prevPartner = Suitors.at(partner)->insert({current, heaviest}, false);
         affectedNodesPerRun++;
 
         if(prevCurrent.id != none) {
@@ -229,12 +229,12 @@ void DynamicBSuitorMatcher::addEdges(std::vector<WeightedEdge> &edges, bool sort
         if ((Suitors.at(edge.u)->hasPartner(edge.v) && Suitors.at(edge.v)->hasPartner(edge.u))
             || !isBetterMatch(edge.u, edge.v, edge.weight)
             || !isBetterMatch(edge.v, edge.u, edge.weight)) {
-            // INFO("Edge ", edge.u, ",", edge.v,
-            //      " ignored, since min(u): ", Suitors.at(edge.u)->min.weight,
-            //      " min(v): ", Suitors.at(edge.v)->min.weight);
+            INFO("Edge ", edge.u, ",", edge.v,
+                 " ignored, since min(u): ", Suitors.at(edge.u)->min.weight,
+                 " min(v): ", Suitors.at(edge.v)->min.weight);
             continue;
         }
-        // INFO("Edge ", edge.u, ",", edge.v, " better choice. Min at ", edge.u, ": ", Suitors.at(edge.u)->min.weight, " Min at ", edge.v, ": ", Suitors.at(edge.v)->min.weight);
+        INFO("Edge ", edge.u, ",", edge.v, " better choice. Min at ", edge.u, ": ", Suitors.at(edge.u)->min.weight, " Min at ", edge.v, ": ", Suitors.at(edge.v)->min.weight);
         // affectedNodes.clear();
 
         // processEdgeInsertion(edge);

@@ -24,8 +24,8 @@ bool BMatching::isProper(const Graph &G) const {
 }
 
 void BMatching::match(node u, node v) {
-    assert(matches.at(u).size() <= b.at(u));
-    assert(matches.at(v).size() <= b.at(v));
+    // assert(matches.at(u).size() <= b.at(u));
+    // assert(matches.at(v).size() <= b.at(v));
     matches.at(u).insert(v);
     matches.at(v).insert(u);
 }

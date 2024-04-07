@@ -4,6 +4,8 @@
 #include <iomanip>
 #include <stdexcept>
 
+#include <networkit/auxiliary/Log.hpp>
+
 namespace NetworKit {
 BSuitorMatcher::BSuitorMatcher(const Graph &G, const std::vector<count> &b) : BMatcher(G, b), b(b) {
     if (G.numberOfSelfLoops() > 0)
@@ -66,6 +68,7 @@ std::vector<count> BSuitorMatcher::readBValuesFromFile(count size, const std::st
 void BSuitorMatcher::findSuitors(node cur) {
     for (index i = 0; i < b.at(cur); i++) {
         auto [pref, heaviest] = findPreferred(cur);
+        INFO("Got: ", pref);
         if (pref != none) {
             makeSuitor(cur, heaviest, pref);
         }
@@ -75,14 +78,17 @@ void BSuitorMatcher::findSuitors(node cur) {
 DynBNode BSuitorMatcher::findPreferred(node u) {
     DynBNode best = DynBNode{none, 0};
 
-    auto hasProposedTo = [&](node x) -> bool {
-        return std::any_of(Proposed.at(u)->partners.begin(), Proposed.at(u)->partners.end(),
-                           [x](const DynBNode &y) { return y.id == x; });
-    };
+    // OLD CODE
+    // auto hasProposedTo = [&](node x) -> bool {
+    //     return std::any_of(Proposed.at(u)->partners.begin(), Proposed.at(u)->partners.end(),
+    //                        [x](const DynBNode &y) { return y.id == x; });
+    // };
 
     for (auto n : G->weightNeighborRange(u)) {
         const DynBNode v = DynBNode(n.first, n.second);
-        if (!hasProposedTo(v.id)) {
+        if (!Proposed.at(u)->hasPartner(v.id)) {
+            INFO("Checking: ", u , ",", v.id, " weight: ", v.weight);
+        // if (!hasProposedTo(v.id)) {
             if (v.weight > best.weight || (v.weight == best.weight && v.id < best.id)) {
                 const auto n_suitor_weight = Suitors.at(v.id)->min.weight;
 
@@ -97,9 +103,10 @@ DynBNode BSuitorMatcher::findPreferred(node u) {
 }
 
 void BSuitorMatcher::makeSuitor(node u, edgeweight w, node v) {
-    auto smallest = Suitors.at(v)->popMinIfFull();
-    Suitors.at(v)->insert(DynBNode(u, w));
-    Proposed.at(u)->insert(DynBNode(v, w));
+    // auto smallest = Suitors.at(v)->popMinIfFull();
+    auto smallest = Suitors.at(v)->insert(DynBNode(u, w), false);
+    Proposed.at(u)->insert(DynBNode(v, w), false);
+    INFO("Inserted: ", u, ",", v);
 
     if (smallest.id != none) {
         Proposed.at(smallest.id)->remove(v);
@@ -131,8 +138,11 @@ void BSuitorMatcher::buildBMatching() {
     M.reset();
     G->forNodes([&](node x) {
         // assert(Suitors.at(x)->partners.size() <= b.at(x));
-        for (auto y : Suitors.at(x)->partners) {
+        for (auto y : Suitors.at(x)->partnersBucket) {
+            // std::cout << x << ": " << y.first << "," << y.second.id << std::endl;
+        // for (auto y : Suitors.at(x)->partners) {
             if (y.id != none && x < y.id) {
+                // std::cout << "Match: " << x << " and " << y.second.id << std::endl;
                 M.match(x, y.id);
             }
         }

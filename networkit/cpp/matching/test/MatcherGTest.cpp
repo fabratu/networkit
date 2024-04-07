@@ -544,15 +544,6 @@ TEST_F(MatcherGTest, testDynBSuitorMulti) {
 
     auto res = sm.getMatches();
 
-    // auto idx = 0;
-    // INFO("Initial matching:");
-    // for (auto &u : res) {
-    //     INFO(idx, ": ");
-    //     for (auto v : u) {
-    //         INFO(v, ", ");
-    //     }
-    //     idx++;
-    // }
 
     NetworKit::DynamicBSuitorMatcher dynBMatcher(G, 2);
     dynBMatcher.run();
@@ -561,6 +552,7 @@ TEST_F(MatcherGTest, testDynBSuitorMulti) {
     auto bMatching = dynBMatcher.getBMatching();
     auto bres = bMatching.getMatches();
 
+    INFO("Initial matching:");
     for (size_t i = 0; i < res.size(); i++) {
         INFO(res.at(i), " vs. ", bres.at(i));
     }
@@ -580,6 +572,7 @@ TEST_F(MatcherGTest, testDynBSuitorMulti) {
     auto bMatching2 = dynBMatcher.getBMatching();
     auto bres2 = bMatching2.getMatches();
 
+    INFO("After adding:");
     for (size_t i = 0; i < res2.size(); i++) {
         INFO(res2.at(i), " vs. ", bres2.at(i));
     }
@@ -590,13 +583,11 @@ TEST_F(MatcherGTest, testDynBSuitorMulti) {
     auto bMatching3 = dynBMatcher.getBMatching();
     auto bres3 = bMatching3.getMatches();
 
+    INFO("After removal:");
     for (size_t i = 0; i < res.size(); i++) {
         INFO(res.at(i), " vs. ", bres3.at(i));
     }
 
-    // for (size_t i = 0; i < dynBMatcher.Proposed.size(); i++) {
-    //     INFO(*bsm2.Proposed.at(i), " vs. ", *dynBMatcher.Proposed.at(i));
-    // }
 }
 
 TEST_F(MatcherGTest, testDynBSuitorUnsaturated) {
