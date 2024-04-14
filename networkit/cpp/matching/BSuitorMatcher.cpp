@@ -1,10 +1,16 @@
 #include <networkit/matching/BSuitorMatcher.hpp>
 
 #include <algorithm>
+#include <deque>
+#include <queue>
+#include <unordered_set>
 #include <iomanip>
 #include <stdexcept>
+#include <random>
+#include <mutex>
 
 #include <networkit/auxiliary/Log.hpp>
+#include <networkit/auxiliary/Parallelism.hpp>
 
 namespace NetworKit {
 BSuitorMatcher::BSuitorMatcher(const Graph &G, const std::vector<count> &b) : BMatcher(G, b), b(b) {
@@ -65,6 +71,11 @@ std::vector<count> BSuitorMatcher::readBValuesFromFile(count size, const std::st
     return b;
 }
 
+void BSuitorMatcher::runSequential() {
+    G->forNodes([&](node u) { findSuitors(u); });
+    hasRun = true;
+}
+
 void BSuitorMatcher::findSuitors(node cur) {
     for (index i = 0; i < b.at(cur); i++) {
         auto [pref, heaviest] = findPreferred(cur);
@@ -86,8 +97,8 @@ DynBNode BSuitorMatcher::findPreferred(node u) {
 
     for (auto n : G->weightNeighborRange(u)) {
         const DynBNode v = DynBNode(n.first, n.second);
-        if (!Proposed.at(u)->hasPartner(v.id)) {
-            INFO("Checking: ", u , ",", v.id, " weight: ", v.weight);
+        if (!Proposed.at(u)->hasPartner(v)) {
+            // INFO("Checking: ", u , ",", v.id, " weight: ", v.weight);
         // if (!hasProposedTo(v.id)) {
             if (v.weight > best.weight || (v.weight == best.weight && v.id < best.id)) {
                 const auto n_suitor_weight = Suitors.at(v.id)->min.weight;
@@ -109,7 +120,7 @@ void BSuitorMatcher::makeSuitor(node u, edgeweight w, node v) {
     INFO("Inserted: ", u, ",", v);
 
     if (smallest.id != none) {
-        Proposed.at(smallest.id)->remove(v);
+        Proposed.at(smallest.id)->remove(DynBNode{v, smallest.weight});
         auto [pref, heaviest] = findPreferred(smallest.id);
         if (pref != none) {
             makeSuitor(smallest.id, heaviest, pref);
@@ -117,15 +128,122 @@ void BSuitorMatcher::makeSuitor(node u, edgeweight w, node v) {
     }
 }
 
+void BSuitorMatcher::runParallel() {
+    // Note: this is wrong, since technically we also have to lock cur due to search of proposed
+
+
+    INFO("Starting in parallel");
+
+    std::vector<std::mutex> nodeLocks(G->numberOfNodes());
+
+    auto numThreads = Aux::getMaxNumberOfThreads();
+
+    std::vector<std::unordered_set<node>> Q(numThreads);
+    // Q.reserve(numThreads);
+
+    int chunkSize = std::ceil(static_cast<double>(G->numberOfNodes()) / numThreads);
+    for (size_t i = 0; i < numThreads; i++)
+    {  
+        Q[i].reserve(chunkSize);
+    }
+    
+    G->balancedParallelForNodes([&](node u) {
+        int threadNum = omp_get_thread_num();
+        Q[threadNum].insert(u);
+    });
+
+#pragma omp parallel
+    {
+        // std::random_device rd;
+        // std::mt19937 gen {rd()};
+        int threadNum = omp_get_thread_num();
+        std::unordered_set<node> *localQ = &Q[threadNum];
+        // std::deque<node> *localQ = &Q[threadNum];
+        // std::ranges::shuffle(*localQ, gen);
+        // std::deque<node> QPrime{};
+        std::unordered_set<node> QPrime;
+
+        // size_t localNodes = localQ.size();
+        do {
+            if (localQ->size() == 0) {
+                break;
+            }
+
+            for(auto it = localQ->begin(); it != localQ->end(); ++it) {
+
+                node cur = *it;
+                // localQ->pop_back();
+                size_t i = 1;
+
+                bool isExhausted = false;
+
+                INFO("Thread: ", threadNum, " processing node ", cur);
+                while (i <= b.at(cur) && !isExhausted) {
+                    nodeLocks[cur].lock();
+                    DynBNode p = findPreferred(cur);
+                    nodeLocks[cur].unlock();
+
+                    if (p.id != none) {
+                        INFO("Thread: ", threadNum, " node ", cur, " found a potential suitor: ", p.id);
+                        nodeLocks[p.id].lock();
+                        nodeLocks[cur].lock();
+                        DynBNode newP = findPreferred(cur);
+                        nodeLocks[cur].unlock();
+
+                        if(newP == p) {
+                            i++;
+                            INFO("Thread: ", threadNum, " node ", cur, " locked and inserted: ", p.id);
+                            DynBNode prevP = Suitors.at(p.id)->insert({cur,G->weight(cur, p.id)});
+                            Proposed.at(cur)->insert(p, false);
+                            if (prevP.id != none) {
+                                INFO("Thread: ", threadNum, " node ", cur, " inserted: ", p.id, " and got a loose end ", prevP.id);
+                                nodeLocks[prevP.id].lock();
+                                if(Proposed.at(prevP.id)->hasPartner(p)) {
+                                    INFO("Thread: ", threadNum, " node ", cur, " remove ", p.id, " from loose end ", prevP.id);
+                                    Proposed.at(prevP.id)->remove(p);
+                                }
+                                nodeLocks[prevP.id].unlock();
+                                INFO("Thread: ", threadNum, " node ", cur, " unlocked loose end ", prevP.id);
+                                QPrime.insert(prevP.id);
+                                INFO("Thread: ", threadNum, " node ", cur, " pushed: ", prevP.id, " to Q");
+                            }
+                        }
+                        nodeLocks[p.id].unlock();
+                        INFO("Thread: ", threadNum, " node ", cur, " unlocked node ", p.id);
+                    } else {
+                        isExhausted = true;
+                    }
+
+                }
+            }
+
+            localQ->clear();
+
+            for( node newNode : QPrime){
+                localQ->insert(newNode);
+            }
+            QPrime.clear();
+
+            // localNodes = localQ.size();
+        } while(true);        
+
+
+    }
+
+     hasRun = true;
+
+}
+
 bool BSuitorMatcher::isSymmetrical() const {
     bool sym = true;
-    auto matchedSymmetrical = [&](node x, node y) -> bool {
-        return Suitors.at(x)->hasPartner(y) == Suitors.at(y)->hasPartner(x);
+    auto matchedSymmetrical = [&](DynBNode x, DynBNode y) -> bool {
+        return Suitors.at(x.id)->hasPartner(y) == Suitors.at(y.id)->hasPartner(x);
     };
 
     G->forNodes([&](node u) {
         G->forNodes([&](node v) {
-            if (u > v && !matchedSymmetrical(u, v)) {
+            edgeweight weight = G->weight(u,v);
+            if (u > v && !matchedSymmetrical(DynBNode{u,weight}, DynBNode{v,weight})) {
                 sym = false;
             }
         });
@@ -150,7 +268,10 @@ void BSuitorMatcher::buildBMatching() {
 }
 
 void BSuitorMatcher::run() {
-    G->forNodes([&](node u) { findSuitors(u); });
-    hasRun = true;
+    if (parallel) {
+        runParallel();
+    } else {
+        runSequential();
+    }
 }
 } // namespace NetworKit

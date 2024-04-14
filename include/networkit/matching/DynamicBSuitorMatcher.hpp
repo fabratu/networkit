@@ -41,7 +41,7 @@ class DynamicBSuitorMatcher final : public BSuitorMatcher {
     // Other approach
     void trackUpdatePath(size_t batchId, node start, bool recursiveCall = false);
     void processEdgeInsertionNew(const WeightedEdge &edge);
-    void processEdgeRemovalNew(const Edge &edge);
+    void processEdgeRemovalNew(const WeightedEdge &edge);
     // void updateAffectedNodes();
 
     // // Original code
@@ -108,11 +108,11 @@ public:
     }
     void addEdges(std::vector<WeightedEdge> &edges, bool sort = true);
 
-    void removeEdge(Edge &edge) {
-        std::vector<Edge> edges{edge};
+    void removeEdge(WeightedEdge &edge) {
+        std::vector<WeightedEdge> edges{edge};
         removeEdges(edges);
     }
-    void removeEdges(std::vector<Edge> &edges);
+    void removeEdges(std::vector<WeightedEdge> &edges);
 
     count getNumberOfAffected();
 };

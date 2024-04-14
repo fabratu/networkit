@@ -260,6 +260,7 @@ TEST_F(MatcherGTest, testBSuitorMatcherEqualsSuitorMatcher) {
 }
 
 TEST_F(MatcherGTest, testBSuitorMatcherConstantB) {
+    // Aux::Log::setLogLevel("INFO");
     for (int b : {2, 3, 4, 5}) {
         auto G = METISGraphReader{}.read("input/lesmis.graph");
         G.removeSelfLoops();
@@ -271,6 +272,7 @@ TEST_F(MatcherGTest, testBSuitorMatcherConstantB) {
         EXPECT_TRUE(M.isProper(G));
         EXPECT_FALSE(hasUnmatchedNeighbors(G, M));
     }
+    // Aux::Log::setLogLevel("QUIET");
 }
 
 TEST_F(MatcherGTest, testBSuitorMatcherDifferentB) {
@@ -294,7 +296,7 @@ TEST_F(MatcherGTest, testBSuitorMatcherDifferentB) {
 
 TEST_F(MatcherGTest, testDynBSuitorInsertEdges) {
     auto start = std::chrono::high_resolution_clock::now();
-    for (int i = 0; i < 100000; i++) {
+    for (int i = 0; i < 1000000; i++) {
         // Aux::Random::setSeed(i, true);
 
         auto G = generateRandomWeightedGraph(100);
@@ -422,6 +424,32 @@ TEST_F(MatcherGTest, testDynBSuitorBenchmarkInsert) {
 
 }
 
+TEST_F(MatcherGTest, testBSuitorBenchmarkInsert) {
+
+    uint64_t total = 0;
+    auto start = std::chrono::high_resolution_clock::now();
+    auto stop = std::chrono::high_resolution_clock::now();
+    for (int i = 0; i < 10; i++) {
+        // Aux::Random::setSeed(i, true);
+
+        auto G = generateRandomWeightedGraph(1000);
+
+        const count b = 6;
+        DynamicBSuitorMatcher bsm(G, b);
+        bsm.setParallel(true);
+
+        start = std::chrono::high_resolution_clock::now();
+        bsm.run();
+        stop = std::chrono::high_resolution_clock::now();
+        total += std::chrono::duration_cast<std::chrono::microseconds>(stop - start).count();
+
+    }
+    Aux::Log::setLogLevel("INFO");
+    INFO("Duration: ", total);
+    Aux::Log::setLogLevel("QUIET");
+
+}
+
 
 TEST_F(MatcherGTest, testDynBSuitorRemoveEdges) {
     //
@@ -435,7 +463,7 @@ TEST_F(MatcherGTest, testDynBSuitorRemoveEdges) {
         DynamicBSuitorMatcher dbsm(G, b);
         dbsm.run();
 
-        std::vector<Edge> edges;
+        std::vector<WeightedEdge> edges;
         std::vector<edgeweight> edgeWeights;
         count m = 10;
         for (auto j = 0; j < m; j++) {

@@ -18,12 +18,12 @@ struct DynBNode {
     DynBNode(node n, edgeweight w) : id(n), weight(w) {}
 
     bool operator==(const DynBNode &other) const {
-        return id == other.id;
-        // return id == other.id && weight == other.weight;
+        // return id == other.id;
+        return id == other.id && weight == other.weight;
     }
     bool operator!=(const DynBNode &other) const {
-        return id != other.id;
-        // return id != other.id || weight != other.weight;
+        // return id != other.id;
+        return id != other.id || weight != other.weight;
     }
 };
 
@@ -56,21 +56,24 @@ struct DynBNodeMatchesInfo {
     }
 
     // TODO: fix
-    bool hasPartner(node u) {
-        bool same = false;
-        DynBNode tester{u, none};
-        // INFO("Started hasPartner against ", tester.id);
-        for(auto it = partnersBucket.begin(); it != partnersBucket.end(); ++it) {
-            if(tester == *it) {
-                same = true;
-            }
-        }
-        INFO("Has partner: ", u, " True: ", same);
-        return same;
+    bool hasPartner(DynBNode u) {
+        // bool same = false;
+        // DynBNode tester{u, none};
+        // // INFO("Started hasPartner against ", tester.id);
+        // for(auto it = partnersBucket.begin(); it != partnersBucket.end(); ++it) {
+        //     if(tester == *it) {
+        //         same = true;
+        //     }
+        // }
+        // // INFO("Has partner: ", u, " True: ", same);
+        // return same;
 
         // bool tester = partnersBucket.contains(DynBNode{u,none});
         // INFO("Has partner: ", u, " True: ", tester);
-        // return partnersBucket.contains(DynBNode{u,none});
+        bool hasPartner = partnersBucket.contains(u);
+        INFO("Has partner: ", u.id, " True: ", hasPartner);
+        return hasPartner;
+        // return partnersBucket.contains(u);
         
         // NOT SO OLD CODE
         // return partnersHashed.contains(u);
@@ -87,7 +90,7 @@ struct DynBNodeMatchesInfo {
             return {none, 0};
         } else {
             auto ret = min;
-            remove(min.id);
+            remove(min);
             return ret;
         }
 
@@ -112,8 +115,8 @@ struct DynBNodeMatchesInfo {
 
     DynBNode insert(const DynBNode &u, bool update = true) {
         // INFO("Want to insert ", u.id);
-        if (hasPartner(u.id)) 
-            return {none, 0};
+        // if (hasPartner(u)) 
+        //     return {none, 0};
 
         DynBNode prevMin = popMinIfFull();
         // TODO: activate again if working
@@ -125,7 +128,7 @@ struct DynBNodeMatchesInfo {
             lastUpdate.emplace_back(u);
         if (partnersBucket.size() >= max_size && !partnersBucket.empty()) {
             min = DynBNode{(*partnersBucket.begin()).id, (*partnersBucket.begin()).weight};
-            INFO("Min after insertion: ", min.id, " with weight: ", min.weight);
+            // INFO("Min after insertion: ", min.id, " with weight: ", min.weight);
         }
 
         return prevMin;
@@ -166,16 +169,22 @@ struct DynBNodeMatchesInfo {
     }
 
     // TODO: fix
-    void remove(node u) {
-        looseEnd = u;
-        std::set<DynBNode, DynBNodeComparator>::iterator myIt;
-        for(auto it = partnersBucket.begin(); it != partnersBucket.end(); ++it) {
-            if((*it).id == u) {
-                myIt = it;
-                break;
-            }
-        }
-        partnersBucket.erase(myIt);
+    void remove(DynBNode u) {
+        // if (partnersBucket.contains(u)) {
+            partnersBucket.erase(u);
+        // }
+
+        // looseEnd = u;
+        // std::set<DynBNode, DynBNodeComparator>::iterator myIt;
+        // for(auto it = partnersBucket.begin(); it != partnersBucket.end(); ++it) {
+        //     if((*it).id == u) {
+        //         myIt = it;
+        //         break;
+        //     }
+        // }
+        // partnersBucket.erase(myIt);
+
+
         // partnersBucket.erase(DynBNode{u, none});
         min = DynBNode(none, 0);
 
@@ -318,6 +327,8 @@ public:
 
     void buildBMatching();
 
+    void setParallel(bool setPar) { parallel = setPar; }
+
 protected:
     std::vector<std::unique_ptr<DynBNodeMatchesInfo>> Suitors;
     std::vector<std::unique_ptr<DynBNodeMatchesInfo>> Proposed;
@@ -366,6 +377,15 @@ protected:
      *
      */
     bool isSymmetrical() const;
+
+private:
+
+    void runSequential();
+
+    void runParallel();
+
+    bool parallel = false;
+
 };
 } // namespace NetworKit
 
