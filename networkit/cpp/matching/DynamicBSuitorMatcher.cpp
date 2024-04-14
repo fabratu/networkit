@@ -31,8 +31,8 @@ void DynamicBSuitorMatcher::processEdgeInsertionNew(const WeightedEdge &edge) {
     // INFO("Start processing ", u, ",", v);
     edgeweight w = G->weight(u,v);
     
-    auto edgeHash = u < v ? std::make_pair(u, v) : std::make_pair(v, u);
-    size_t batchId = batchTracker[edgeHash];
+    // auto edgeHash = u < v ? std::make_pair(u, v) : std::make_pair(v, u);
+    // size_t batchId = batchTracker[edgeHash];
 
     DynBNode startU = Suitors.at(u)->insert({v,w});
     DynBNode startV = Suitors.at(v)->insert({u,w});
@@ -49,11 +49,13 @@ void DynamicBSuitorMatcher::processEdgeInsertionNew(const WeightedEdge &edge) {
     }
 
     if(startU.id != none) {
-        trackUpdatePath(batchId, startU.id);
+        // trackUpdatePath(batchId, startU.id);
+        trackUpdatePath(0, startU.id);
     }
 
     if(startV.id != none) {
-        trackUpdatePath(batchId, startV.id);
+        // trackUpdatePath(batchId, startV.id);
+        trackUpdatePath(0, startV.id);
     }
 }
 
@@ -78,13 +80,13 @@ void DynamicBSuitorMatcher::trackUpdatePath(size_t batchId, node start, bool rec
         done = true;
 
         G->forNeighborsOf(current, [&](node x, edgeweight weight) {
-            auto edgeHash = current < x ? std::make_pair(current, x) : std::make_pair(x, current);
-            // ignore edges that that still need to be processed
-            if (batchTracker.contains(edgeHash)) {
-                // INFO("Processing batch item: ", batchId, " Edge ", current, ",", x, " has id ", batchTracker[edgeHash]);
-                if (batchId < batchTracker[edgeHash])
-                    return;
-            }
+            // auto edgeHash = current < x ? std::make_pair(current, x) : std::make_pair(x, current);
+            // // ignore edges that that still need to be processed
+            // if (batchTracker.contains(edgeHash)) {
+            //     // INFO("Processing batch item: ", batchId, " Edge ", current, ",", x, " has id ", batchTracker[edgeHash]);
+            //     if (batchId < batchTracker[edgeHash])
+            //         return;
+            // }
 
             if (Suitors.at(current)->hasPartner(x))
                 return;
@@ -162,14 +164,17 @@ void DynamicBSuitorMatcher::processEdgeRemovalNew(const Edge &edge) {
     node v = edge.v;
     // INFO("Start processing ", u, ",", v);
     
-    auto edgeHash = u < v ? std::make_pair(u, v) : std::make_pair(v, u);
-    size_t batchId = batchTracker[edgeHash];
+    // auto edgeHash = u < v ? std::make_pair(u, v) : std::make_pair(v, u);
+    // size_t batchId = batchTracker[edgeHash];
 
     Suitors.at(u)->remove(v);
     Suitors.at(v)->remove(u);
 
-    trackUpdatePath(batchId, u);    
-    trackUpdatePath(batchId, v);
+    // trackUpdatePath(batchId, u);    
+    // trackUpdatePath(batchId, v);
+
+    trackUpdatePath(0, u);    
+    trackUpdatePath(0, v);
 }
 
 
@@ -210,12 +215,12 @@ void DynamicBSuitorMatcher::addEdges(std::vector<WeightedEdge> &edges, bool sort
                 [](const WeightedEdge &a, const WeightedEdge &b) { return a.weight > b.weight; });
     }
 
-    for (size_t i = 0; i < edges.size(); i++)
-    {
-        auto edgeHash = edges[i].u < edges[i].v ? std::make_pair(edges[i].u, edges[i].v) : std::make_pair(edges[i].v, edges[i].u);
-        batchTracker[edgeHash] = i;
-        // INFO("Batch: ", batchTracker[edgeHash], " -> ", edges[i].u, ",", edges[i].v);
-    }
+    // for (size_t i = 0; i < edges.size(); i++)
+    // {
+    //     auto edgeHash = edges[i].u < edges[i].v ? std::make_pair(edges[i].u, edges[i].v) : std::make_pair(edges[i].v, edges[i].u);
+    //     batchTracker[edgeHash] = i;
+    //     // INFO("Batch: ", batchTracker[edgeHash], " -> ", edges[i].u, ",", edges[i].v);
+    // }
 
     // for (std::unordered_map<std::pair<int,int>,uint8_t,PairHash>::const_iterator it = batchTracker.begin();
     //     it != batchTracker.end(); ++it) {
@@ -256,11 +261,11 @@ void DynamicBSuitorMatcher::removeEdges(std::vector<Edge> &edges) {
     affectedNodesPerRun = 0;
     batchTracker.clear();
 
-    for (size_t i = 0; i < edges.size(); i++)
-    {
-        auto edgePair = std::make_pair(edges[i].u, edges[i].v);
-        batchTracker[edgePair] = i;
-    }
+    // for (size_t i = 0; i < edges.size(); i++)
+    // {
+    //     auto edgePair = std::make_pair(edges[i].u, edges[i].v);
+    //     batchTracker[edgePair] = i;
+    // }
 
 
     // edgeBatch = edges;
@@ -948,13 +953,13 @@ void DynamicBSuitorMatcher::findAffectedNodes(node u, node v, Operation op) {
         // line 9
         // if (op == Operation::Insert) {
         G->forNeighborsOf(current, [&](node x, edgeweight weight) {
-            auto edgeHash = current < x ? std::make_pair(current, x) : std::make_pair(x, current);
-            // ignore edges that that still need to be processed
-            if (batchTracker.contains(edgeHash)) {
-                INFO("Processing batch item: ", batchId, " Edge ", current, ",", x, " has id ", batchTracker[edgeHash]);
-                if (batchId < batchTracker[edgeHash])
-                    return;
-            }
+            // auto edgeHash = current < x ? std::make_pair(current, x) : std::make_pair(x, current);
+            // // ignore edges that that still need to be processed
+            // if (batchTracker.contains(edgeHash)) {
+            //     INFO("Processing batch item: ", batchId, " Edge ", current, ",", x, " has id ", batchTracker[edgeHash]);
+            //     if (batchId < batchTracker[edgeHash])
+            //         return;
+            // }
             // if (std::find(edgeBatch.begin(), edgeBatch.end(), Edge(current, x)) != edgeBatch.end()
             //     || std::find(edgeBatch.begin(), edgeBatch.end(), Edge(x, current))
             //            != edgeBatch.end())
@@ -1262,12 +1267,12 @@ void DynamicBSuitorMatcher::updateAffectedNodes(uint8_t batchId) {
 
                 // Check for new candidate
                 G->forNeighborsOf(current, [&](node v, edgeweight edgeWeight) {
-                    auto edgeHash = current < v ? std::make_pair(current, v) : std::make_pair(v, current);
-                    // ignore edges that that still need to be processed
-                    if (batchTracker.contains(edgeHash)) {
-                        if (batchId < batchTracker[edgeHash])
-                            return;
-                    }
+                    // auto edgeHash = current < v ? std::make_pair(current, v) : std::make_pair(v, current);
+                    // // ignore edges that that still need to be processed
+                    // if (batchTracker.contains(edgeHash)) {
+                    //     if (batchId < batchTracker[edgeHash])
+                    //         return;
+                    // }
 
                     // if (std::find(edgeBatch.begin(), edgeBatch.end(), Edge(current, v))
                     //         != edgeBatch.end()
@@ -1351,12 +1356,12 @@ void DynamicBSuitorMatcher::updateAffectedNodes(uint8_t batchId) {
 
                 // Check for new candidate
                 G->forNeighborsOf(current, [&](node v, edgeweight edgeWeight) {
-                    auto edgeHash = current < v ? std::make_pair(current, v) : std::make_pair(v, current);
-                    // ignore edges that that still need to be processed
-                    if (batchTracker.contains(edgeHash)) {
-                        if (batchId < batchTracker[edgeHash])
-                            return;
-                    }                    // if (std::find(edgeBatch.begin(), edgeBatch.end(), Edge(current, v))
+                    // auto edgeHash = current < v ? std::make_pair(current, v) : std::make_pair(v, current);
+                    // // ignore edges that that still need to be processed
+                    // if (batchTracker.contains(edgeHash)) {
+                    //     if (batchId < batchTracker[edgeHash])
+                    //         return;
+                    // }                    // if (std::find(edgeBatch.begin(), edgeBatch.end(), Edge(current, v))
                     //         != edgeBatch.end()
                     //     || std::find(edgeBatch.begin(), edgeBatch.end(), Edge(v, current))
                     //            != edgeBatch.end())
