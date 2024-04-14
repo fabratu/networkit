@@ -107,12 +107,13 @@ void DynamicBSuitorMatcher::trackUpdatePath(size_t batchId, node start, bool rec
              ", weight: ", heaviest);
 
         // line 10-12
-        if(Suitors.at(current)->min.id == partner && Suitors.at(current)->min.weight == heaviest) {
-            break;
-        }
         if (partner == none || heaviest < Suitors.at(partner)->min.weight
             || (heaviest == Suitors.at(partner)->min.weight
                 && current > Suitors.at(partner)->min.id)) {
+            break;
+        }
+
+        if(Suitors.at(current)->min.id == partner && Suitors.at(current)->min.weight == heaviest) {
             break;
         }
 
