@@ -61,7 +61,6 @@ void DynamicBSuitorMatcher::processEdgeInsertionNew(const WeightedEdge &edge) {
 
 void DynamicBSuitorMatcher::trackUpdatePath(size_t batchId, node start, bool recursiveCall) {
     // INFO("Start node: ", start);
-    std::chrono::milliseconds ms = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch());
 
     bool done = false;
 
@@ -125,7 +124,7 @@ void DynamicBSuitorMatcher::trackUpdatePath(size_t batchId, node start, bool rec
         affectedNodesPerRun++;
 
         if(prevCurrent.id != none) {
-            // INFO("Current was saturated. Removing current from prevCurrent ", prevCurrent.id);
+            INFO("Current was saturated. Removing current from prevCurrent ", prevCurrent.id);
             Suitors.at(prevCurrent.id)->remove(current);
             looseEnds.emplace_back(DynBNode{prevCurrent.id,Suitors.at(prevCurrent.id)->min.weight});
         }
@@ -162,7 +161,6 @@ void DynamicBSuitorMatcher::processEdgeRemovalNew(const Edge &edge) {
 
     node u = edge.u;
     node v = edge.v;
-    // INFO("Start processing ", u, ",", v);
     
     // auto edgeHash = u < v ? std::make_pair(u, v) : std::make_pair(v, u);
     // size_t batchId = batchTracker[edgeHash];
@@ -269,11 +267,9 @@ void DynamicBSuitorMatcher::removeEdges(std::vector<Edge> &edges) {
 
 
     // edgeBatch = edges;
-
     for (const auto &edge : edges) {
         assert(!G->hasEdge(edge.u, edge.v));
         if (Suitors.at(edge.u)->hasPartner(edge.v)) {
-
             // affectedNodes.clear();
             // assert(numberOfAffectedEquals(0));
 

@@ -49,7 +49,7 @@ struct DynBNodeMatchesInfo {
     }
 
     DynBNode popMinIfFull() {
-        INFO("Called popMinIfFull for min: ", min.id, " (weight: ", min.weight, ")");
+        // INFO("Called popMinIfFull for min: ", min.id, " (weight: ", min.weight, ")");
         if (partners.size() < max_size) {
             return {none, 0};
         } else {
@@ -93,7 +93,7 @@ struct DynBNodeMatchesInfo {
                                           return false;
                                       }),
                        partners.end());
-        INFO("Removed: ", u);
+        // INFO("Removed: ", u);
         min = DynBNode(none, 0);
     }
 

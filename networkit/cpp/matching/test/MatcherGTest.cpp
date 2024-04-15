@@ -425,6 +425,7 @@ TEST_F(MatcherGTest, testDynBSuitorBenchmarkInsert) {
 
 TEST_F(MatcherGTest, testDynBSuitorRemoveEdges) {
     //
+    
     for (int i = 0; i < 1000000; i++) {
         // Aux::Random::setSeed(i, true);
         // Aux::Log::setLogLevel("INFO");
@@ -445,7 +446,9 @@ TEST_F(MatcherGTest, testDynBSuitorRemoveEdges) {
             G.removeEdge(u, v);
         }
 
+        Aux::Log::setLogLevel("INFO");
         dbsm.removeEdges(edges);
+        Aux::Log::setLogLevel("QUIET");
         dbsm.buildBMatching();
         const auto dm = dbsm.getBMatching();
         auto dres = dm.getMatches();
