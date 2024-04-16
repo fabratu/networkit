@@ -124,7 +124,7 @@ void DynamicBSuitorMatcher::trackUpdatePath(size_t batchId, node start, bool rec
         affectedNodesPerRun++;
 
         if(prevCurrent.id != none) {
-            INFO("Current was saturated. Removing current from prevCurrent ", prevCurrent.id);
+            // INFO("Current was saturated. Removing current from prevCurrent ", prevCurrent.id);
             Suitors.at(prevCurrent.id)->remove(current);
             looseEnds.emplace_back(DynBNode{prevCurrent.id,Suitors.at(prevCurrent.id)->min.weight});
         }
