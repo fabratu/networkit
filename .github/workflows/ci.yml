@@ -50,6 +50,13 @@
 # Build-type:  Debug
 #
 #
+# style
+# -----
+# Description: Uses the most recent available clang-format version on the Linux reference image (e.g. Ubuntu LTS)
+#              for formatting the code.
+# Script:      ../../check_code.sh -v
+#
+#
 # Jobs:
 # =====
 # 0. Rationale:
@@ -463,10 +470,8 @@ jobs:
     steps:
       - name: Install prerequisites
         run: |
-          curl https://apt.llvm.org/llvm-snapshot.gpg.key | sudo apt-key add -
-          echo "deb http://apt.llvm.org/focal llvm-toolchain-focal-18 main" | sudo tee /etc/apt/sources.list.d/llvm18.list
           sudo apt-get update
-          sudo apt-get install clang-format-18 python3-yaml
+          sudo apt-get install python3-yaml
       - name: Checkout networkit
         uses: actions/checkout@v4
         with:
@@ -476,4 +481,6 @@ jobs:
           set -e
           ./check_code.sh -v
         env:
-          NETWORKIT_OVERRIDE_CLANG_FORMAT: "clang-format-18"
+          # The most recent clang-format version for Ubuntu 22.04 LTS is clang-format-15
+          # https://packages.ubuntu.com/search?keywords=clang-format
+          NETWORKIT_OVERRIDE_CLANG_FORMAT: "clang-format-15"
