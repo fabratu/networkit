@@ -24,7 +24,7 @@ struct DynBNode {
 
 struct DynBNodeMatchesInfo {
     std::vector<DynBNode> partners;
-    DynBNode min; // (none, 0) if partners still has free capacity
+    DynBNode min;
     count max_size;
     count num_visits;
     node looseEnd;
@@ -49,7 +49,6 @@ struct DynBNodeMatchesInfo {
     }
 
     DynBNode popMinIfFull() {
-        // INFO("Called popMinIfFull for min: ", min.id, " (weight: ", min.weight, ")");
         if (partners.size() < max_size) {
             return {none, 0};
         } else {
@@ -64,8 +63,6 @@ struct DynBNodeMatchesInfo {
             return {none, 0};
 
         DynBNode prevMin = popMinIfFull();
-        // TODO: activate again if working
-        // assert(partners.size() < max_size);
 
         partners.emplace_back(u);
         if (update)
@@ -93,7 +90,6 @@ struct DynBNodeMatchesInfo {
                                           return false;
                                       }),
                        partners.end());
-        // INFO("Removed: ", u);
         min = DynBNode(none, 0);
     }
 
@@ -121,24 +117,20 @@ struct DynBNodeMatchesInfo {
     }
 
     DynBNode popLastUpdate() {
-        // INFO("Started last update");
         if (lastUpdate.size() == 0) {
             return {none, 0};
         } else {
             auto ret = lastUpdate.back();
-            // INFO("Last update has item: ", ret.id, " (size: ", lastUpdate.size(), ")");
             lastUpdate.pop_back();
             return ret;
         }
     }
 
     void reset() {
-        // INFO("Started reset.");
         auto max = lastUpdate.size();
         for (size_t i = 0; i < max; i++) {
             lastUpdate.pop_back();
         }
-        // INFO("Finished reset.");
     };
 };
 
