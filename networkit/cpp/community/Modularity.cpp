@@ -88,6 +88,20 @@ double Modularity::getQuality(const Partition &zeta, const Graph &G) {
     return modularity;
 }
 
+// TODO check if binom exist in networkit
+// Fast binomial coefficient calculation function
+// k among n
+double BinomialCoefficient(const double n, const double k) {
+  std::vector<double> aSolutions(k);
+  aSolutions[0] = n - k + 1;
+
+  for (double i = 1; i < k; ++i) {
+    aSolutions[i] = aSolutions[i - 1] * (n - k + 1 + i) / (i + 1);
+  }
+
+  return aSolutions[k - 1];
+}
+
 double Modularity::getQualityHypergraph(const Partition &zeta, const Hypergraph &G, double gamma, int type_contribution) {
     assert(G.numberOfNodes() <= zeta.numberOfElements());
     double cov = 0.0;
@@ -562,11 +576,11 @@ double Modularity::deltaModularityHypergraph(const Partition &zeta, const Hyperg
                 if (S.find(nid) != S.end()){CommEdge[2]++;}
             }
                 
-            if (!(CommEdge[1] >= int(G.getEdgeIncidence(eid).size()/ 2. +1)) && !(CommEdge[0]- CommEdge[2] >= int(G.getEdgeIncidence(eid).size()/ 2. +1)) ){
-                if (CommEdge[0] >= int(G.getEdgeIncidence(eid).size()/ 2. +1)){
+            if (!(CommEdge[1] >= int(G.order(eid)/ 2. +1)) && !(CommEdge[0]- CommEdge[2] >= int(G.order(eid))/ 2. +1)) {
+                if (CommEdge[0] >= int(G.order(eid)/ 2. +1)){
                     edgeBelongs_c =true;
                 }
-                if (CommEdge[1] + CommEdge[2] >= int(G.getEdgeIncidence(eid).size()/ 2. +1)){
+                if (CommEdge[1] + CommEdge[2] >= int(G.order(eid)/ 2. +1)){
                     edgeBelongs_target_c =true;
                 }
             }
@@ -670,11 +684,11 @@ double Modularity::deltaModularityHypergraph(const Partition &zeta, const Hyperg
                 if (S.find(nid) != S.end()){CommEdge[2]++;}
             }
                 
-            if (!(CommEdge[1] >= int(G.getEdgeIncidence(eid).size()/ 2. +1)) && !(CommEdge[0]- CommEdge[2] >= int(G.getEdgeIncidence(eid).size()/ 2. +1)) ){
-                if (CommEdge[0] >= int(G.getEdgeIncidence(eid).size()/ 2. +1)){
+            if (!(CommEdge[1] >= int(G.order(eid)/ 2. +1)) && !(CommEdge[0]- CommEdge[2] >= int(G.order(eid)/ 2. +1)) ){
+                if (CommEdge[0] >= int(G.order(eid)/ 2. +1)){
                     edgeBelongs_c =true;
                 }
-                if (CommEdge[1] + CommEdge[2] >= int(G.getEdgeIncidence(eid).size()/ 2. +1)){
+                if (CommEdge[1] + CommEdge[2] >= int(G.order(eid)/ 2. +1)){
                     edgeBelongs_target_c =true;
                 }
             }

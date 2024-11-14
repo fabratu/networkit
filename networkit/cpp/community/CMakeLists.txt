@@ -1,7 +1,6 @@
 networkit_add_module(community
     AdjustedRandMeasure.cpp
     ClusteringGenerator.cpp
-    CommunityDetectionAlgorithm.cpp
     Conductance.cpp
     CoverHubDominance.cpp
     CoverF1Similarity.cpp
@@ -14,6 +13,8 @@ networkit_add_module(community
     GraphClusteringTools.cpp
     GraphStructuralRandMeasure.cpp
     HubDominance.cpp
+    HypergraphLeiden.cpp
+    HypergraphLouvain.cpp
     IntrapartitionDensity.cpp
     IsolatedInterpartitionConductance.cpp
     IsolatedInterpartitionExpansion.cpp

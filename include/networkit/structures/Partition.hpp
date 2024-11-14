@@ -227,6 +227,8 @@ public:
      */
     std::map<index, count> subsetSizeMap() const;
 
+    index giveOne(index s) const;
+
     /**
      * Get the members of the subset @a s.
      *

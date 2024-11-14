@@ -23,7 +23,7 @@
 
 namespace NetworKit {
 
-class ParallelLeiden final : public CommunityDetectionAlgorithm {
+class ParallelLeiden final : public CommunityDetectionAlgorithm<Graph> {
 public:
     /**
      *

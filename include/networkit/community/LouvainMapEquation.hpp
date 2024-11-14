@@ -16,7 +16,7 @@
 
 namespace NetworKit {
 
-class LouvainMapEquation : public CommunityDetectionAlgorithm {
+class LouvainMapEquation : public CommunityDetectionAlgorithm<Graph> {
 private:
     enum class ParallelizationType : uint8_t {
         NONE,

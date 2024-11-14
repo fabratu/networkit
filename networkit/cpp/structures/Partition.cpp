@@ -163,4 +163,16 @@ std::set<index> Partition::getSubsetIds() const {
     return ids;
 }
 
+index Partition::giveOne(index s) const {
+    assert(s <= omega);
+    index i= std::numeric_limits<uint64_t>::max();
+    for (index e = 0; e < this->z; ++e) {
+        if (data[e] == s) {
+            i = e;
+            break;
+        }
+    }
+    return i;
+}
+
 } /* namespace NetworKit */
