@@ -15,6 +15,7 @@ networkit_add_module(community
     HubDominance.cpp
     HypergraphLeiden.cpp
     HypergraphLouvain.cpp
+    HyperLeiden.cpp
     IntrapartitionDensity.cpp
     IsolatedInterpartitionConductance.cpp
     IsolatedInterpartitionExpansion.cpp
