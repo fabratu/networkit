@@ -2,6 +2,7 @@
 #include <d2hb/integer_log2.h>
 
 #include <cassert>
+#include <stdexcept>
 
 namespace d2hb {
 
@@ -74,7 +75,7 @@ BlockHandle BlockManager::allocate_block(Degree degree) {
 #else
     void* ptr_entries;
     void* ptr_htab = nullptr;
-    ptr_entries = operator new(m_bytes_per_entry* bsize_requested);
+    ptr_entries = operator new(m_bytes_per_entry * bsize_requested);
     if (uses_htab(bsize_requested))
         ptr_htab = operator new(sizeof(index_type) * 2 * bsize_requested);
     return BlockHandle(bsize_requested, ptr_entries, reinterpret_cast<index_type*>(ptr_htab));
@@ -102,7 +103,7 @@ void BlockManager::free_block(BlockHandle bhandle) {
         }
     }
 #else
-    operator delete(bhandle.access_entries(), m_bytes_per_entry* bhandle.bsize());
+    operator delete(bhandle.access_entries(), m_bytes_per_entry * bhandle.bsize());
     operator delete(bhandle.access_htab(), sizeof(index_type) * 2 * bhandle.bsize());
 #endif
 }

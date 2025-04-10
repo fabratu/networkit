@@ -163,10 +163,28 @@ class HTAtomic128 {
     static bool dwcas(HTAtomic128::Cell& r, HTAtomic128::Cell& expected,
                       HTAtomic128::Cell const& desired) {
         bool res;
+#if __x86_64__
         asm volatile("lock cmpxchg16b %1"
                      : "=@ccz"(res), "+m"(r), "+a"(expected.key), "+d"(expected.value)
                      : "b"(desired.key), "c"(desired.value)
                      : "memory");
+#else
+        HTAtomic128::Cell original;
+        asm volatile("mov %w[success], #0\n\t"
+                     "ldxp %x[original_0], %x[original_1], %[storage]\n\t"
+                     "cmp %x[original_0], %x[expected_0]\n\t"
+                     "ccmp %x[original_1], %x[expected_1], #0, eq\n\t"
+                     "b.ne 1f\n\t"
+                     "stxp %w[success], %x[desired_0], %x[desired_1], %[storage]\n\t"
+                     "eor %w[success], %w[success], #1\n\t"
+                     "1:\n\t"
+                     : [success] "=&r"(res), [storage] "+Q"(r), [original_0] "=&r"(original.key),
+                       [original_1] "=&r"(original.value)
+                     : [desired_0] "r"(desired.key), [desired_1] "r"(desired.value),
+                       [expected_0] "r"(expected.key), [expected_1] "r"(expected.value)
+                     : "cc"
+                       "memory");
+#endif
         return res;
     }
 
