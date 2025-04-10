@@ -20,8 +20,75 @@ void HyperLeiden::run(){
 
 void HyperLeiden::greedyMovePhase(const Hypergraph &graph, std::vector<count> &communityMemberships,
                                   Aux::HTCustodian &communitySizes,
-                                  Aux::HTCustodian &edgeCommunityMemberships){
-    // nothing here yet
+                                  Aux::HTCustodian &edgeCommunityMemberships) {
+
+    auto deltaHCPM = [&](count c1, count c2, Aux::HTCustodian &communitySizes,
+                         Aux::HTCustodian &edgeCommunityMemberships) {
+        double delta = 0.0;
+
+        if (c1 != c2) {
+            // delta = (communitySizes[c1] - communitySizes[c2]) / graph.numberOfEdges();
+            // delta += (edgeCommunityMemberships[c1] - edgeCommunityMemberships[c2])
+            //          / graph.numberOfEdges();
+        }
+        return delta;
+    };
+
+    auto getBestCommunity = [&](node v) -> std::pair<count, double> {
+        count bestCommunity = communityMemberships[v];
+        double maxGain = 0.0;
+
+        graph.forNeighborsOf(v, [&](node w) {
+            if (communityMemberships[v] == communityMemberships[w])
+                return;
+            double gain = deltaHCPM(communityMemberships[v], communityMemberships[w],
+                                    communitySizes, edgeCommunityMemberships);
+            gain > maxGain ? (maxGain = gain, bestCommunity = communityMemberships[w]) : 0;
+        });
+        return {bestCommunity, maxGain};
+    };
+
+    std::vector<bool> vaff(graph.numberOfNodes(), false);
+    count numAffected = graph.numberOfNodes();
+
+    do {
+        graph.parallelForNodes([&](node u) {
+            if (!vaff[u])
+                return;
+            vaff[u] = false;
+            numAffected--;
+            auto [bestCommunity, gain] = getBestCommunity(u);
+            if (bestCommunity != communityMemberships[u]) {
+
+                // communityMemberships[u] = bestCommunity;
+                // communitySizes[bestCommunity]++;
+                // communitySizes[communityMemberships[u]]--;
+                // edgeCommunityMemberships[bestCommunity]++;
+                // edgeCommunityMemberships[communityMemberships[u]]--;
+            }
+        });
+        // #pragma omp parallel for schedule(dynamic, 2048) reduction(+ : el)
+        //         for (K u = 0; u < S; ++u) {
+        //             int t = omp_get_thread_num();
+        //             if (!x.hasVertex(u))
+        //                 continue;
+        //             if (!fa(u) || !vaff[u])
+        //                 continue;
+        //             if (REFINE && ctot[vcom[u]] > vtot[u])
+        //                 continue;
+        //             leidenClearScanW(*vcs[t], *vcout[t]);
+        //             leidenScanCommunitiesW<false, REFINE>(*vcs[t], *vcout[t], x, u, vcom, vcob);
+        //             auto [c, e] = leidenChooseCommunity(x, u, vcom, vtot, ctot, *vcs[t],
+        //             *vcout[t], M, R); if (c && leidenChangeCommunityOmpW<REFINE>(vcom, ctot, x,
+        //             u, c, vtot))
+        //                 x.forEachEdgeKey(u, [&](auto v) { vaff[v] = B(1); });
+        //             vaff[u] = B();
+        //             el += e; // l1-norm
+        //         }
+        //         if (REFINE || fc(el, l++))
+        //             break;
+
+    } while (numAffected);
 };
 
 void HyperLeiden::refineDisconnected(const Hypergraph &graph,
