@@ -1,4 +1,4 @@
-#include <d2hb/dynamic_hashtable.h>
+#include <networkit/auxiliary/DynamicParallelHashTable.hpp>
 
 #include <omp.h>
 
@@ -11,20 +11,22 @@
 #include <iterator>
 #include <thread>
 
-namespace d2hb {
+namespace Aux {
 
 HTAtomic128::HTAtomic128() : m_cells(m_capacity, Cell{}) {}
 
 HTAtomic128::HTAtomic128(size_t const capacity)
     : m_cells(capacity, Cell{}), m_capacity(capacity), m_log_capacity(std::log2(capacity)) {}
 
-HTAtomic128::HTAtomic128(HTAtomic128 const& other)
+HTAtomic128::HTAtomic128(HTAtomic128 const &other)
     : m_cells(other.m_cells), m_capacity(other.m_capacity), m_log_capacity(other.m_log_capacity),
       m_global_occupancy(other.m_global_occupancy.load()) {}
 
-HTAtomic128::HTAtomic128(HTAtomic128&& other) : HTAtomic128() { swap(*this, other); }
+HTAtomic128::HTAtomic128(HTAtomic128 &&other) : HTAtomic128() {
+    swap(*this, other);
+}
 
-HTAtomic128& HTAtomic128::operator=(HTAtomic128 other) {
+HTAtomic128 &HTAtomic128::operator=(HTAtomic128 other) {
     swap(*this, other);
     return *this;
 }
@@ -39,7 +41,7 @@ bool HTAtomic128::insert(uint64_t const key, uint64_t const value) {
         idx = fast_mod(idx, m_capacity);
         assert(idx < m_capacity);
 
-        Cell& cell = m_cells[idx];
+        Cell &cell = m_cells[idx];
 
 #pragma omp atomic read
         expected.key = cell.key;
@@ -75,7 +77,7 @@ uint64_t HTAtomic128::find(uint64_t const key) const {
         idx = fast_mod(idx, m_capacity);
         assert(idx < m_capacity);
 
-        Cell const& cell = m_cells[idx];
+        Cell const &cell = m_cells[idx];
 
 #pragma omp atomic read
         actual.key = cell.key;
@@ -105,7 +107,7 @@ bool HTAtomic128::update(uint64_t const key, uint64_t const value) {
         idx = fast_mod(idx, m_capacity);
         assert(idx < m_capacity);
 
-        Cell& cell = m_cells[idx];
+        Cell &cell = m_cells[idx];
 
 #pragma omp atomic read
         expected.key = cell.key;
@@ -126,16 +128,18 @@ bool HTAtomic128::update(uint64_t const key, uint64_t const value) {
     }
 }
 
-HTAtomic128::Iterator::Iterator(Cells const& cells)
+HTAtomic128::Iterator::Iterator(Cells const &cells)
     : m_cells_it(std::begin(cells)), m_cells_end(std::end(cells)) {
     while (m_cells_it != m_cells_end && m_cells_it->key == ht_invalid_key) {
         m_cells_it++;
     }
 }
 
-HTAtomic128::Iterator::pointer HTAtomic128::Iterator::operator->() { return &*m_cells_it; }
+HTAtomic128::Iterator::pointer HTAtomic128::Iterator::operator->() {
+    return &*m_cells_it;
+}
 
-HTAtomic128::Iterator& HTAtomic128::Iterator::operator++() {
+HTAtomic128::Iterator &HTAtomic128::Iterator::operator++() {
     next();
     return *this;
 }
@@ -146,7 +150,9 @@ HTAtomic128::Iterator HTAtomic128::Iterator::operator++(int) {
     return tmp;
 }
 
-void HTAtomic128::Iterator::invalidate() { m_cells_it = m_cells_end; }
+void HTAtomic128::Iterator::invalidate() {
+    m_cells_it = m_cells_end;
+}
 
 void HTAtomic128::Iterator::next() {
     if (m_cells_it == m_cells_end) {
@@ -168,14 +174,20 @@ size_t HTAtomic128::increment_global_occupancy(size_t increment) {
     return increment_atomically(m_global_occupancy, increment);
 }
 
-size_t HTAtomic128::global_occupancy() const { return m_global_occupancy.load(); }
+size_t HTAtomic128::global_occupancy() const {
+    return m_global_occupancy.load();
+}
 
-size_t HTAtomic128::capacity() const { return m_capacity; }
+size_t HTAtomic128::capacity() const {
+    return m_capacity;
+}
 
-bool HTAtomic128::filled() const { return ht_filled(m_global_occupancy.load(), m_capacity); }
+bool HTAtomic128::filled() const {
+    return ht_filled(m_global_occupancy.load(), m_capacity);
+}
 
 void move_cells(HTAtomic128::Cells::const_iterator begin, HTAtomic128::Cells::const_iterator end,
-                HTAtomic128& target) {
+                HTAtomic128 &target) {
     size_t local_occupancy = 0;
     for (HTAtomic128::Cells::const_iterator c = begin; c != end; ++c) {
         if (c->key != ht_invalid_key) {
@@ -232,14 +244,14 @@ cluster_range(HTAtomic128::Cells::const_iterator cells_begin,
     return std::make_pair(p_cells_begin, p_cells_end);
 }
 
-void roam(HTAtomic128& source, HTAtomic128& target, uint32_t const p_count, uint32_t const p_id) {
+void roam(HTAtomic128 &source, HTAtomic128 &target, uint32_t const p_count, uint32_t const p_id) {
     auto range_to_move =
         cluster_range(std::cbegin(source.cells()), std::cend(source.cells()), p_count, p_id);
     move_cells(range_to_move.first, range_to_move.second, target);
 }
 
-HTAtomic128* grow_hashtable(std::unique_ptr<HTAtomic128>& source,
-                            std::unique_ptr<HTAtomic128>& target, std::atomic_bool& request_growth,
+HTAtomic128 *grow_hashtable(std::unique_ptr<HTAtomic128> &source,
+                            std::unique_ptr<HTAtomic128> &target, std::atomic_bool &request_growth,
                             int const p_count, int const p_id) {
     request_growth.store(true);
 
@@ -260,8 +272,8 @@ HTAtomic128* grow_hashtable(std::unique_ptr<HTAtomic128>& source,
     return source.get();
 }
 
-HTSyncData::HTSyncData(std::unique_ptr<HTAtomic128>& _source, std::unique_ptr<HTAtomic128>& _target,
-                       std::atomic_uint32_t& _busy, std::atomic_bool& _request_growth, int _p_count,
+HTSyncData::HTSyncData(std::unique_ptr<HTAtomic128> &_source, std::unique_ptr<HTAtomic128> &_target,
+                       std::atomic_uint32_t &_busy, std::atomic_bool &_request_growth, int _p_count,
                        int _p_id, uint32_t _insert_threshold)
     : source(_source), target(_target), busy(_busy), request_growth(_request_growth),
       p_count(_p_count), p_id(_p_id), insert_threshold(_insert_threshold) {}
@@ -308,13 +320,17 @@ bool HTHandle::insert(uint64_t const key, uint64_t const value) {
     return success;
 }
 
-uint64_t HTHandle::find(uint64_t const key) const { return m_ht->find(key); }
+uint64_t HTHandle::find(uint64_t const key) const {
+    return m_ht->find(key);
+}
 
 bool HTHandle::update(uint64_t const key, uint64_t const value) const {
     return m_ht->update(key, value);
 }
 
-HTAtomic128 const& HTHandle::hashtable() { return *m_ht; }
+HTAtomic128 const &HTHandle::hashtable() {
+    return *m_ht;
+}
 
 HTCustodian::HTCustodian() : HTCustodian(ht_begin_capacity) {}
 
@@ -322,31 +338,35 @@ HTCustodian::HTCustodian(size_t const begin_capacity) {
     m_source = std::make_unique<HTAtomic128>(begin_capacity);
 }
 
-HTCustodian::HTCustodian(HTCustodian const& other) {
+HTCustodian::HTCustodian(HTCustodian const &other) {
     m_source = std::make_unique<HTAtomic128>(*other.m_source.get());
 }
 
-HTCustodian::HTCustodian(HTCustodian&& other) : HTCustodian() { swap(*this, other); }
+HTCustodian::HTCustodian(HTCustodian &&other) : HTCustodian() {
+    swap(*this, other);
+}
 
 std::unique_ptr<HTHandle> HTCustodian::make_handle() {
-    d2hb::HTSyncData sync_data{m_source,
-                               m_target,
-                               m_busy_bitset,
-                               m_request_growth,
-                               omp_get_num_threads(),
-                               omp_get_thread_num(),
-                               random_thread_range()};
+    Aux::HTSyncData sync_data{m_source,
+                              m_target,
+                              m_busy_bitset,
+                              m_request_growth,
+                              omp_get_num_threads(),
+                              omp_get_thread_num(),
+                              random_thread_range()};
 
     auto handle = std::make_unique<HTHandle>(sync_data);
 
     return handle;
 }
 
-HTAtomic128 const* const HTCustodian::current_table() const { return m_source.get(); }
+HTAtomic128 const *const HTCustodian::current_table() const {
+    return m_source.get();
+}
 
 uint32_t HTCustodian::random_thread_range() {
     std::uniform_int_distribution<uint32_t> m_dist(1, omp_get_num_threads());
     return m_dist(m_generator);
 }
 
-} // namespace d2hb
+} // namespace Aux

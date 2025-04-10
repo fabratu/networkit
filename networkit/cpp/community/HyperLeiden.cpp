@@ -17,4 +17,21 @@ HyperLeiden::HyperLeiden(const Hypergraph &hGraph, int numberOfIterations, doubl
 void HyperLeiden::run(){
     // nothing here yet
 };
+
+void HyperLeiden::greedyMovePhase(const Hypergraph &graph, std::vector<count> &communityMemberships,
+                                  Aux::HTCustodian &communitySizes,
+                                  Aux::HTCustodian &edgeCommunityMemberships){
+    // nothing here yet
+};
+
+void HyperLeiden::refineDisconnected(const Hypergraph &graph,
+                                     std::vector<count> &communityMemberships){
+    // nothing here yet
+};
+
+Hypergraph HyperLeiden::aggregateHypergraph(const Hypergraph &graph,
+                                            const std::vector<count> &communityMemberships) {
+    // nothing here yet
+    return Hypergraph();
+}
 } // namespace NetworKit

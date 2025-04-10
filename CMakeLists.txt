@@ -232,16 +232,6 @@ else()
 endif()
 
 ################################################################################
-# Build and import d2hb
-
-if(EXISTS "${PROJECT_SOURCE_DIR}/extlibs/d2hb/CMakeLists.txt")
-		add_subdirectory(extlibs/d2hb)
-	else()
-		message(FATAL_ERROR
-				"Missing d2hb library in extlibs/d2hb ")
-	endif()
-
-################################################################################
 # NETWORKIT MODULES
 if(NETWORKIT_BUILD_CORE AND NETWORKIT_MONOLITH)
 

@@ -15,8 +15,11 @@
 #include <mutex>
 #include <omp.h>
 #include <thread>
+
 #include <tlx/unused.hpp>
+
 #include <networkit/Globals.hpp>
+#include <networkit/auxiliary/DynamicParallelHashTable.hpp>
 #include <networkit/auxiliary/Parallel.hpp>
 #include <networkit/auxiliary/Parallelism.hpp>
 #include <networkit/auxiliary/SignalHandling.hpp>
@@ -50,6 +53,16 @@ public:
     void run() override;
 
 private:
+    // Functions
+    void greedyMovePhase(const Hypergraph &graph, std::vector<count> &communityMemberships,
+                         Aux::HTCustodian &communitySizes,
+                         Aux::HTCustodian &edgeCommunityMemberships);
+
+    void refineDisconnected(const Hypergraph &graph, std::vector<count> &communityMemberships);
+
+    Hypergraph aggregateHypergraph(const Hypergraph &graph,
+                                   const std::vector<count> &communityMemberships);
+
     // Hyperparameter
     double gamma; // Resolution parameter
     int numberOfIterations;

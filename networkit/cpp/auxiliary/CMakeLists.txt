@@ -1,6 +1,7 @@
 networkit_add_module(auxiliary
     BloomFilter.cpp
     BucketPQ.cpp
+    DynamicParallelHashTable.cpp
     Log.cpp
     NumericTools.cpp
     Parallelism.cpp
