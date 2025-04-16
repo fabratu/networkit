@@ -55,7 +55,7 @@ public:
 private:
     // Functions
     void greedyMovePhase(const Hypergraph &graph, std::vector<count> &communityMemberships,
-                         Aux::HTCustodian &communitySizes,
+                         std::vector<count> &communitySizes,
                          Aux::HTCustodian &edgeCommunityMemberships);
 
     void refineDisconnected(const Hypergraph &graph, std::vector<count> &communityMemberships);

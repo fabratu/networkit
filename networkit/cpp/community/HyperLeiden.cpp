@@ -19,14 +19,14 @@ void HyperLeiden::run(){
 };
 
 void HyperLeiden::greedyMovePhase(const Hypergraph &graph, std::vector<count> &communityMemberships,
-                                  Aux::HTCustodian &communitySizes,
+                                  std::vector<count> &communitySizes,
                                   Aux::HTCustodian &edgeCommunityMemberships) {
 
-    auto deltaHCPM = [&](count c1, count c2, Aux::HTCustodian &communitySizes,
-                         Aux::HTCustodian &edgeCommunityMemberships) {
+    auto deltaHCPM = [&](count c1, count c2, count c1Size, count c2Size) {
         double delta = 0.0;
 
         if (c1 != c2) {
+            delta -= 1.0;
             // delta = (communitySizes[c1] - communitySizes[c2]) / graph.numberOfEdges();
             // delta += (edgeCommunityMemberships[c1] - edgeCommunityMemberships[c2])
             //          / graph.numberOfEdges();
@@ -34,17 +34,31 @@ void HyperLeiden::greedyMovePhase(const Hypergraph &graph, std::vector<count> &c
         return delta;
     };
 
+    auto gatherNeighboringCommunities = [&](node v) {
+        std::unordered_set<std::pair<count, count>> communities;
+        graph.forNeighborsOf(v, [&](node w) {
+            if (communityMemberships[v] != communityMemberships[w]) {
+                communities.insert(
+                    {communityMemberships[w], communitySizes[communityMemberships[w]]});
+            }
+        });
+        return communities;
+    };
+
     auto getBestCommunity = [&](node v) -> std::pair<count, double> {
+        count oldCommunity = communityMemberships[v];
         count bestCommunity = communityMemberships[v];
         double maxGain = 0.0;
+        auto neighboringCommunities = gatherNeighboringCommunities(v);
 
-        graph.forNeighborsOf(v, [&](node w) {
-            if (communityMemberships[v] == communityMemberships[w])
-                return;
-            double gain = deltaHCPM(communityMemberships[v], communityMemberships[w],
-                                    communitySizes, edgeCommunityMemberships);
-            gain > maxGain ? (maxGain = gain, bestCommunity = communityMemberships[w]) : 0;
-        });
+        for (auto &community : neighboringCommunities) {
+            double gain =
+                deltaHCPM(communityMemberships[v], oldCommunity, community.first, community.second);
+            if (gain > maxGain) {
+                maxGain = gain;
+                bestCommunity = community.first;
+            }
+        }
         return {bestCommunity, maxGain};
     };
 
