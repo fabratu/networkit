@@ -32,8 +32,12 @@ void HyperLeiden::run() {
             greedyMovePhase(*G, communityMemberships, communitySizes, edgeCommunityMemberships);
 
             // Refine disconnected communities
+
             if (refinementStrategy == RefinementStrategy::DISCONNECTED) {
-                refineDisconnected(*G, communityMemberships);
+                std::vector<count> tmpCommunityMemberships(G->upperNodeIdBound(), 0);
+                std::vector<count> tmpCommunitySizes(G->upperNodeIdBound(), 0);
+                refineDisconnected(*G, communityMemberships, tmpCommunityMemberships,
+                                   tmpCommunitySizes);
             }
 
             // Aggregate hypergraph
@@ -50,7 +54,10 @@ void HyperLeiden::run() {
 
             // Refine disconnected communities
             if (refinementStrategy == RefinementStrategy::DISCONNECTED) {
-                refineDisconnected(currentG, communityMemberships);
+                std::vector<count> tmpCommunityMemberships(currentG.upperNodeIdBound(), 0);
+                std::vector<count> tmpCommunitySizes(currentG.upperNodeIdBound(), 0);
+                refineDisconnected(currentG, tmpCommunityMemberships, tmpCommunitySizes,
+                                   communityMemberships);
             }
 
             // Aggregate hypergraph
@@ -91,8 +98,28 @@ void HyperLeiden::greedyMovePhase(const Hypergraph &graph, std::vector<count> &c
 };
 
 void HyperLeiden::refineDisconnected(const Hypergraph &graph,
-                                     std::vector<count> &communityMemberships){
-    // nothing here yet
+                                     std::vector<count> &communityMemberships,
+                                     std::vector<count> &communitySizes,
+                                     std::vector<count> &referenceCommunityMemberships) {
+
+    count maxIter = 100;
+
+    std::vector<bool> vaff(graph.numberOfNodes(), true);
+    for (count l = 0; l < maxIter; l++) {
+        graph.parallelForNodes([&](node u) {
+            if (!vaff[u])
+                return;
+            if (communitySizes[communityMemberships[u]] != 1) // Only perform for isolated nodes
+                return;
+            vaff[u] = false;
+            auto [bestCommunity, gain] = getBestCommunity(
+                graph, u, communityMemberships, communitySizes, referenceCommunityMemberships);
+            if (bestCommunity != communityMemberships[u]) {
+                if (updateMemberships<true>(u, bestCommunity, communityMemberships, communitySizes))
+                    graph.forNeighborsOf(u, [&](node w) { vaff[w] = true; });
+            }
+        });
+    }
 };
 
 Hypergraph HyperLeiden::aggregateHypergraph(const Hypergraph &graph,
@@ -119,7 +146,8 @@ HyperLeiden::gatherNeighboringCommunities(const Hypergraph &graph, node v,
 std::pair<count, double>
 HyperLeiden::getBestCommunity(const Hypergraph &graph, node v,
                               const std::vector<count> &communityMemberships,
-                              const std::vector<count> &communitySizes) {
+                              const std::vector<count> &communitySizes,
+                              const std::vector<count> &referenceCommunityMemberships) const {
     auto [oldCommunity, oldSize] =
         std::make_pair(communityMemberships[v], communitySizes[communityMemberships[v]]);
     auto [bestCommunity, bestGain] = std::make_pair(0, 0.0);
@@ -136,7 +164,7 @@ HyperLeiden::getBestCommunity(const Hypergraph &graph, node v,
     }
     // TODO: maybe default gain not 0.0
     return {bestCommunity, bestGain};
-};
+}
 
 double HyperLeiden::deltaHCPM(count c1, count c2, count c1Size, count c2Size,
                               const std::vector<count> &communityMemberships,

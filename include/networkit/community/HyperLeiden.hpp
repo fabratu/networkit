@@ -59,7 +59,9 @@ private:
                          std::vector<count> &communitySizes,
                          Aux::HTCustodian &edgeCommunityMemberships);
 
-    void refineDisconnected(const Hypergraph &graph, std::vector<count> &communityMemberships);
+    void refineDisconnected(const Hypergraph &graph, std::vector<count> &communityMemberships,
+                            std::vector<count> &tmpCommunitySizes,
+                            std::vector<count> &referenceCommunityMemberships);
 
     Hypergraph aggregateHypergraph(const Hypergraph &graph,
                                    const std::vector<count> &communityMemberships);
@@ -78,9 +80,11 @@ private:
                                  const std::vector<count> &communitySizes) const;
 
     // maps to "leidenChooseBestCommunity" in GVE-Leiden
-    std::pair<count, double> getBestCommunity(const Hypergraph &graph, node v,
-                                              const std::vector<count> &communityMemberships,
-                                              const std::vector<count> &communitySizes);
+    std::pair<count, double>
+    getBestCommunity(const Hypergraph &graph, node v,
+                     const std::vector<count> &communityMemberships,
+                     const std::vector<count> &communitySizes,
+                     const std::vector<count> &referenceCommunityMemberships = {}) const;
 
     // maps to "deltaModularity" in GVE-Leiden
     double deltaHCPM(count c1, count c2, count c1Size, count c2Size,
@@ -88,8 +92,31 @@ private:
                      const std::vector<count> &communitySizes) const;
 
     // maps to "leidenChangeCommunity" in GVE-Leiden
-    void updateMemberships(node v, count bestCommunity, std::vector<count> &communityMemberships,
-                           std::vector<count> &communitySizes);
+    template <bool Refine = false>
+    bool updateMemberships(node v, count bestCommunity, std::vector<count> &communityMemberships,
+                           std::vector<count> &communitySizes) {
+        count currentMembership = communityMemberships[v];
+        if (Refine) {
+            count tmpCSize = 0;
+#pragma omp atomic capture
+            {
+                tmpCSize = communitySizes[currentMembership];
+                communitySizes[currentMembership]--; // TODO: add node weights
+            }
+            if (tmpCSize > 1) { // TODO: add node weights
+#pragma omp atomic
+                communitySizes[currentMembership]++;
+                return false;
+            }
+        } else {
+#pragma omp atomic
+            communitySizes[currentMembership]--; // TODO: add node weights
+        }
+#pragma omp atomic
+        communitySizes[bestCommunity]++; // TODO: add node weights
+        communityMemberships[v] = bestCommunity;
+        return true;
+    }
 
     // Hyperparameter
     double gamma;              // Resolution parameter
