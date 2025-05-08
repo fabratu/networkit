@@ -14,95 +14,80 @@ HyperLeiden::HyperLeiden(const Hypergraph &hGraph, int numberOfIterations, doubl
     : CommunityDetectionAlgorithm(hGraph), numberOfIterations(numberOfIterations), gamma(gamma),
       refinementStrategy(refinementStrategy), coarseningStrategy(coarseningStrategy){};
 
-void HyperLeiden::run(){
-    // nothing here yet
-};
+void HyperLeiden::run() {
+
+    int maxPasses = 0;
+    bool isFirst = true;
+    Hypergraph currentG;
+
+    for (int pass = 0; pass < maxPasses; pass++) {
+
+        if (isFirst) {
+            // Initialize memberships + sizes
+            std::vector<count> communityMemberships(G->upperNodeIdBound(), 0);
+            std::vector<count> communitySizes(G->upperNodeIdBound(), 0);
+            Aux::HTCustodian edgeCommunityMemberships(G->upperEdgeIdBound());
+
+            // Greedy Move Phase
+            greedyMovePhase(*G, communityMemberships, communitySizes, edgeCommunityMemberships);
+
+            // Refine disconnected communities
+            if (refinementStrategy == RefinementStrategy::DISCONNECTED) {
+                refineDisconnected(*G, communityMemberships);
+            }
+
+            // Aggregate hypergraph
+            currentG = aggregateHypergraph(*G, communityMemberships);
+        } else {
+            // Initialize memberships + sizes
+            std::vector<count> communityMemberships(currentG.upperNodeIdBound(), 0);
+            std::vector<count> communitySizes(currentG.upperNodeIdBound(), 0);
+            Aux::HTCustodian edgeCommunityMemberships(currentG.upperEdgeIdBound());
+
+            // Greedy Move Phase
+            greedyMovePhase(currentG, communityMemberships, communitySizes,
+                            edgeCommunityMemberships);
+
+            // Refine disconnected communities
+            if (refinementStrategy == RefinementStrategy::DISCONNECTED) {
+                refineDisconnected(currentG, communityMemberships);
+            }
+
+            // Aggregate hypergraph
+            currentG = aggregateHypergraph(currentG, communityMemberships);
+        }
+    }
+}
 
 void HyperLeiden::greedyMovePhase(const Hypergraph &graph, std::vector<count> &communityMemberships,
                                   std::vector<count> &communitySizes,
                                   Aux::HTCustodian &edgeCommunityMemberships) {
 
-    auto deltaHCPM = [&](count c1, count c2, count c1Size, count c2Size) {
-        double delta = 0.0;
+    count maxIter = 100;
 
-        if (c1 != c2) {
-            delta -= 1.0;
-            // delta = (communitySizes[c1] - communitySizes[c2]) / graph.numberOfEdges();
-            // delta += (edgeCommunityMemberships[c1] - edgeCommunityMemberships[c2])
-            //          / graph.numberOfEdges();
-        }
-        return delta;
-    };
+    std::vector<bool> vaff(graph.numberOfNodes(), true);
+    double gainPerRound = 0.0;
 
-    auto gatherNeighboringCommunities = [&](node v) {
-        std::unordered_set<std::pair<count, count>> communities;
-        graph.forNeighborsOf(v, [&](node w) {
-            if (communityMemberships[v] != communityMemberships[w]) {
-                communities.insert(
-                    {communityMemberships[w], communitySizes[communityMemberships[w]]});
-            }
-        });
-        return communities;
-    };
-
-    auto getBestCommunity = [&](node v) -> std::pair<count, double> {
-        count oldCommunity = communityMemberships[v];
-        count bestCommunity = communityMemberships[v];
-        double maxGain = 0.0;
-        auto neighboringCommunities = gatherNeighboringCommunities(v);
-
-        for (auto &community : neighboringCommunities) {
-            double gain =
-                deltaHCPM(communityMemberships[v], oldCommunity, community.first, community.second);
-            if (gain > maxGain) {
-                maxGain = gain;
-                bestCommunity = community.first;
-            }
-        }
-        return {bestCommunity, maxGain};
-    };
-
-    std::vector<bool> vaff(graph.numberOfNodes(), false);
-    count numAffected = graph.numberOfNodes();
-
-    do {
+    for (count l = 0; l < maxIter; l++) {
+        double gainPerRound = 0.0;
         graph.parallelForNodes([&](node u) {
             if (!vaff[u])
                 return;
             vaff[u] = false;
-            numAffected--;
-            auto [bestCommunity, gain] = getBestCommunity(u);
+            auto [bestCommunity, gain] =
+                getBestCommunity(graph, u, communityMemberships, communitySizes);
             if (bestCommunity != communityMemberships[u]) {
-
-                // communityMemberships[u] = bestCommunity;
-                // communitySizes[bestCommunity]++;
-                // communitySizes[communityMemberships[u]]--;
-                // edgeCommunityMemberships[bestCommunity]++;
-                // edgeCommunityMemberships[communityMemberships[u]]--;
+                updateMemberships(u, bestCommunity, communityMemberships, communitySizes);
+                graph.forNeighborsOf(u, [&](node w) { vaff[w] = true; });
+#pragma omp atomic
+                gainPerRound += gain;
             }
         });
-        // #pragma omp parallel for schedule(dynamic, 2048) reduction(+ : el)
-        //         for (K u = 0; u < S; ++u) {
-        //             int t = omp_get_thread_num();
-        //             if (!x.hasVertex(u))
-        //                 continue;
-        //             if (!fa(u) || !vaff[u])
-        //                 continue;
-        //             if (REFINE && ctot[vcom[u]] > vtot[u])
-        //                 continue;
-        //             leidenClearScanW(*vcs[t], *vcout[t]);
-        //             leidenScanCommunitiesW<false, REFINE>(*vcs[t], *vcout[t], x, u, vcom, vcob);
-        //             auto [c, e] = leidenChooseCommunity(x, u, vcom, vtot, ctot, *vcs[t],
-        //             *vcout[t], M, R); if (c && leidenChangeCommunityOmpW<REFINE>(vcom, ctot, x,
-        //             u, c, vtot))
-        //                 x.forEachEdgeKey(u, [&](auto v) { vaff[v] = B(1); });
-        //             vaff[u] = B();
-        //             el += e; // l1-norm
-        //         }
-        //         if (REFINE || fc(el, l++))
-        //             break;
 
-    } while (numAffected);
+        if (gainPerRound < tolerance) {
+            break;
+        }
+    }
 };
 
 void HyperLeiden::refineDisconnected(const Hypergraph &graph,
@@ -115,4 +100,56 @@ Hypergraph HyperLeiden::aggregateHypergraph(const Hypergraph &graph,
     // nothing here yet
     return Hypergraph();
 }
+
+// Helper Functions
+
+std::unordered_map<count, count>
+HyperLeiden::gatherNeighboringCommunities(const Hypergraph &graph, node v,
+                                          const std::vector<count> &communityMemberships,
+                                          const std::vector<count> &communitySizes) const {
+    std::unordered_map<count, count> communities;
+    graph.forNeighborsOf(v, [&](node w) {
+        if (communityMemberships[v] != communityMemberships[w]) {
+            communities.insert({communityMemberships[w], communitySizes[communityMemberships[w]]});
+        }
+    });
+    return communities;
+};
+
+std::pair<count, double>
+HyperLeiden::getBestCommunity(const Hypergraph &graph, node v,
+                              const std::vector<count> &communityMemberships,
+                              const std::vector<count> &communitySizes) {
+    auto [oldCommunity, oldSize] =
+        std::make_pair(communityMemberships[v], communitySizes[communityMemberships[v]]);
+    auto [bestCommunity, bestGain] = std::make_pair(0, 0.0);
+    auto neighboringCommunities =
+        gatherNeighboringCommunities(graph, v, communityMemberships, communitySizes);
+
+    for (const auto &[c, size] : neighboringCommunities) {
+        double gain =
+            deltaHCPM(oldCommunity, c, oldSize, size, communityMemberships, communitySizes);
+        if (gain > bestGain) {
+            bestGain = gain;
+            bestCommunity = c;
+        }
+    }
+    // TODO: maybe default gain not 0.0
+    return {bestCommunity, bestGain};
+};
+
+double HyperLeiden::deltaHCPM(count c1, count c2, count c1Size, count c2Size,
+                              const std::vector<count> &communityMemberships,
+                              const std::vector<count> &communitySizes) const {
+    double delta = 0.0;
+
+    if (c1 != c2) {
+        delta -= 1.0;
+        // delta = (communitySizes[c1] - communitySizes[c2]) / graph.numberOfEdges();
+        // delta += (edgeCommunityMemberships[c1] - edgeCommunityMemberships[c2])
+        //          / graph.numberOfEdges();
+    }
+    return delta;
+};
+
 } // namespace NetworKit

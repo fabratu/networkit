@@ -53,7 +53,8 @@ public:
     void run() override;
 
 private:
-    // Functions
+    // Main Functions
+    // maps to "leiderMoveOmpW" in GVE-Leiden
     void greedyMovePhase(const Hypergraph &graph, std::vector<count> &communityMemberships,
                          std::vector<count> &communitySizes,
                          Aux::HTCustodian &edgeCommunityMemberships);
@@ -63,8 +64,36 @@ private:
     Hypergraph aggregateHypergraph(const Hypergraph &graph,
                                    const std::vector<count> &communityMemberships);
 
+    // Helper Functions
+    void initializeMemberships(std::vector<count> &communityMemberships,
+                               std::vector<count> &communitySizes);
+    // Check if needed
+    void initializeMembershipsWithPartition(std::vector<count> &communityMemberships,
+                                            std::vector<count> &communitySizes,
+                                            const Partition &baseClustering);
+    // maps to "leidenScanCommunityW" in GVE-Leiden
+    std::unordered_map<count, count>
+    gatherNeighboringCommunities(const Hypergraph &graph, node v,
+                                 const std::vector<count> &communityMemberships,
+                                 const std::vector<count> &communitySizes) const;
+
+    // maps to "leidenChooseBestCommunity" in GVE-Leiden
+    std::pair<count, double> getBestCommunity(const Hypergraph &graph, node v,
+                                              const std::vector<count> &communityMemberships,
+                                              const std::vector<count> &communitySizes);
+
+    // maps to "deltaModularity" in GVE-Leiden
+    double deltaHCPM(count c1, count c2, count c1Size, count c2Size,
+                     const std::vector<count> &communityMemberships,
+                     const std::vector<count> &communitySizes) const;
+
+    // maps to "leidenChangeCommunity" in GVE-Leiden
+    void updateMemberships(node v, count bestCommunity, std::vector<count> &communityMemberships,
+                           std::vector<count> &communitySizes);
+
     // Hyperparameter
-    double gamma; // Resolution parameter
+    double gamma;              // Resolution parameter
+    double tolerance = 0.0001; // Tolerance for the greedy move phase
     int numberOfIterations;
     RefinementStrategy refinementStrategy;
     CoarseningStrategy coarseningStrategy;
