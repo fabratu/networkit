@@ -57,10 +57,11 @@ private:
     // maps to "leiderMoveOmpW" in GVE-Leiden
     void greedyMovePhase(const Hypergraph &graph, std::vector<count> &communityMemberships,
                          std::vector<count> &communitySizes,
-                         Aux::HTCustodian &edgeCommunityMemberships);
+                         std::vector<Aux::HTCustodian> &edgeCommunityMemberships);
 
     void refineDisconnected(const Hypergraph &graph, std::vector<count> &communityMemberships,
-                            std::vector<count> &tmpCommunitySizes,
+                            std::vector<count> &communitySizes,
+                            std::vector<Aux::HTCustodian> &edgeCommunityMemberships,
                             std::vector<count> &referenceCommunityMemberships);
 
     Hypergraph aggregateHypergraph(const Hypergraph &graph,
@@ -68,11 +69,9 @@ private:
 
     // Helper Functions
     void initializeMemberships(std::vector<count> &communityMemberships,
-                               std::vector<count> &communitySizes);
-    // Check if needed
-    void initializeMembershipsWithPartition(std::vector<count> &communityMemberships,
-                                            std::vector<count> &communitySizes,
-                                            const Partition &baseClustering);
+                               std::vector<count> &communitySizes,
+                               std::vector<Aux::HTCustodian> &edgeCommunityMemberships);
+
     // maps to "leidenScanCommunityW" in GVE-Leiden
     std::unordered_map<count, count>
     gatherNeighboringCommunities(const Hypergraph &graph, node v,
@@ -84,14 +83,17 @@ private:
     getBestCommunity(const Hypergraph &graph, node v,
                      const std::vector<count> &communityMemberships,
                      const std::vector<count> &communitySizes,
+                     const std::vector<Aux::HTCustodian> &edgeCommunityMemberships,
                      const std::vector<count> &referenceCommunityMemberships = {}) const;
 
     // maps to "deltaModularity" in GVE-Leiden
-    double deltaHCPM(count c1, count c2, count c1Size, count c2Size,
+    double deltaHCPM(const Hypergraph &graph, count c1, count c2, count c1Size, count c2Size,
                      const std::vector<count> &communityMemberships,
-                     const std::vector<count> &communitySizes) const;
+                     const std::vector<count> &communitySizes,
+                     const std::vector<Aux::HTCustodian> &edgeCommunityMemberships) const;
 
     // maps to "leidenChangeCommunity" in GVE-Leiden
+    // TODO: missing update of edgeCommunityMemberships
     template <bool Refine = false>
     bool updateMemberships(node v, count bestCommunity, std::vector<count> &communityMemberships,
                            std::vector<count> &communitySizes) {

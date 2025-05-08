@@ -200,6 +200,28 @@ public:
      */
     index upperEdgeIdBound() const noexcept { return nextEdgeId; }
 
+    /**
+     * Return the hypergraph edge volume, i.e., the number of edges scaled by the number of incident
+     * nodes.
+     * @return The hypergraph edge volume.
+     */
+    count edgeVolume() const noexcept {
+        count volume = 0;
+        for (edgeid eId = 0; eId < nextEdgeId; ++eId) {
+            if (edgeExists[eId]) {
+                volume += edgeIncidence[eId].size();
+            }
+        }
+        return volume;
+    }
+
+    /**
+     * Return the hypergraph edge volume, i.e., the number of nodes in a hyperedge.
+     * @param eid The edge id.
+     * @return The edge volume of the given hyperedge.
+     */
+    count edgeVolume(edgeid eid) const noexcept { return edgeIncidence[eid].size(); }
+
     /* NODE PROPERTIES & MODIFIERS */
 
     /**
@@ -334,12 +356,13 @@ public:
     edgeid addEdge();
 
     /**
-     * Add a new edge with incident nodes to the hypergraph and return it. If parameter addMissing
-     * is set to true, the missing nodes (based on the node id) are added to the Hypergraph.
-     * @param nodes Nodes to add to this edge. If a node is non-existing, this node is added if @a
-     * addMissing is set to true.
-     * @param addMissing Adds unknown nodes if set to true. Note, that this increases the running
-     * time due to additional checks.
+     * Add a new edge with incident nodes to the hypergraph and return it. If parameter
+     * addMissing is set to true, the missing nodes (based on the node id) are added to the
+     * Hypergraph.
+     * @param nodes Nodes to add to this edge. If a node is non-existing, this node is added if
+     * @a addMissing is set to true.
+     * @param addMissing Adds unknown nodes if set to true. Note, that this increases the
+     * running time due to additional checks.
      * @return The new edge or none, if the creation was unsuccessful
      */
     edgeid addEdge(const std::vector<node> &nodes, bool addMissing = false);
