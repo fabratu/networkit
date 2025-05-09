@@ -9,6 +9,7 @@
 #define NETWORKIT_GRAPH_HYPERGRAPH_HPP_
 
 #include <cstddef>
+#include <unordered_map>
 #include <unordered_set>
 #include <vector>
 
@@ -91,7 +92,7 @@ class Hypergraph final {
     std::vector<edgeweight> edgeWeights;
 
     //!< list of node ids, which are part of a certain hyperedge.
-    std::vector<std::unordered_set<node>> edgeIncidence;
+    std::vector<std::unordered_map<node, nodeweight>> edgeIncidence;
 
     AttributeMap<PerNode, Hypergraph> nodeAttributeMap;
     AttributeMap<PerEdge, Hypergraph> edgeAttributeMap;
@@ -243,14 +244,16 @@ public:
      * @a edges.
      * @return The new node.
      */
-    node addNodeTo(const std::vector<edgeid> &edges, node u = none);
+    node addNodeTo(const std::vector<edgeid> &edges, node u = none,
+                   nodeweight nw = defaultNodeWeight);
 
     /**
      * Connect an array of nodes @a u to a hyperedge @a edgeid. If no edge is given, a new
      * hyperedge is added to the hypergraph.
      * @return The new hyperedge.
      */
-    node addNodesTo(const std::vector<node> &nodes, edgeid eid = none);
+    node addNodesTo(const std::vector<node> &nodes, edgeid eid = none,
+                    const std::vector<nodeweight> &weights = {});
 
     /**
      * Tests whether a node exists in the hypergraph. Returns true, if the node id
@@ -307,6 +310,18 @@ public:
     nodeweight getNodeWeight(node u) const;
 
     /**
+     * Return node weight of node @a u in a hyperedge. Returns 0 if node does not
+     * exist.
+     *
+     * @param u The node id.
+     * @param eid The edge id.
+     * @return The node weight of @a u or 0 if node does not exist.
+     */
+    nodeweight getNodeWeightOf(node u, edgeid eid) const {
+        return edgeIncidence[eid].find(u)->second;
+    }
+
+    /**
      * Set the weight of a node. If the node does not exist,
      * it will be inserted.
      *
@@ -314,6 +329,16 @@ public:
      * @param[in]	weight	The node weight.
      */
     void setNodeWeight(node u, nodeweight nw);
+
+    /**
+     * Set the weight of a node in a hyperedge. If the node/edge does not exist,
+     * the missing element will be inserted.
+     *
+     * @param[in] u The node id.
+     * @param[in] eid The edge id.
+     * @param[in] nw The node weight.
+     */
+    void setNodeWeightOf(node u, edgeid eid, nodeweight nw);
 
     /**
      * Returns the (unweighted) degree of a node.
@@ -365,7 +390,8 @@ public:
      * running time due to additional checks.
      * @return The new edge or none, if the creation was unsuccessful
      */
-    edgeid addEdge(const std::vector<node> &nodes, bool addMissing = false);
+    edgeid addEdge(const std::vector<node> &nodes, bool addMissing = false,
+                   const std::vector<nodeweight> &weights = {});
 
     /**
      * Remove an edge @a eid from the hypergraph.
@@ -410,12 +436,28 @@ public:
     count order(edgeid eid) const { return edgeIncidence[eid].size(); }
 
     /**
+     * Return the weighted order of a given edge.
+     *
+     * @param eid The edge id.
+     * @return edgeweight
+     */
+    nodeweight weightedOrder(edgeid eid) const {
+        nodeweight order = 0;
+        for (const auto &node : edgeIncidence[eid]) {
+            order += node.second;
+        }
+        return order;
+    }
+
+    /**
      * Returns map of node members of an hyperedge
      *
      * @param eid The edge id.
      * @return map of node members of each hyperedge
      */
-    const std::unordered_set<node> &edgeMembers(edgeid eid) const { return edgeIncidence[eid]; }
+    const std::unordered_map<node, nodeweight> &edgeMembers(edgeid eid) const {
+        return edgeIncidence[eid];
+    }
 
     /* ITERATORS */
 

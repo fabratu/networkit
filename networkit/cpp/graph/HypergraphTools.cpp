@@ -175,35 +175,35 @@ edgeweight HypergraphTools::maxWeightedDegree(const Hypergraph &hGraph) {
 
 std::unordered_set<node> HypergraphTools::getIntersection(Hypergraph &hGraph, edgeid eid1,
                                                           edgeid eid2) {
-    std::unordered_set<node> smallerUSet = hGraph.order(eid1) < hGraph.order(eid2)
-                                               ? hGraph.edgeMembers(eid1)
-                                               : hGraph.edgeMembers(eid2);
-    std::unordered_set<node> largerUSet = hGraph.order(eid1) < hGraph.order(eid2)
-                                              ? hGraph.edgeMembers(eid2)
-                                              : hGraph.edgeMembers(eid1);
+    std::unordered_map<node, nodeweight> smallerUSet = hGraph.order(eid1) < hGraph.order(eid2)
+                                                           ? hGraph.edgeMembers(eid1)
+                                                           : hGraph.edgeMembers(eid2);
+    std::unordered_map<node, nodeweight> largerUSet = hGraph.order(eid1) < hGraph.order(eid2)
+                                                          ? hGraph.edgeMembers(eid2)
+                                                          : hGraph.edgeMembers(eid1);
 
     std::unordered_set<node> uSetIntersection;
 
-    for (node u : smallerUSet) {
-        if (largerUSet.count(u) > 0)
-            uSetIntersection.insert(u);
+    for (auto u : smallerUSet) {
+        if (largerUSet.count(u.first) > 0)
+            uSetIntersection.insert(u.first);
     }
 
     return uSetIntersection;
 }
 
 count HypergraphTools::getIntersectionSize(Hypergraph &hGraph, edgeid eid1, edgeid eid2) {
-    std::unordered_set<node> smallerUSet = hGraph.order(eid1) < hGraph.order(eid2)
-                                               ? hGraph.edgeMembers(eid1)
-                                               : hGraph.edgeMembers(eid2);
-    std::unordered_set<node> largerUSet = hGraph.order(eid1) < hGraph.order(eid2)
-                                              ? hGraph.edgeMembers(eid2)
-                                              : hGraph.edgeMembers(eid1);
+    std::unordered_map<node, nodeweight> smallerUSet = hGraph.order(eid1) < hGraph.order(eid2)
+                                                           ? hGraph.edgeMembers(eid1)
+                                                           : hGraph.edgeMembers(eid2);
+    std::unordered_map<node, nodeweight> largerUSet = hGraph.order(eid1) < hGraph.order(eid2)
+                                                          ? hGraph.edgeMembers(eid2)
+                                                          : hGraph.edgeMembers(eid1);
 
     count intersectionSize = 0;
 
-    for (node u : smallerUSet) {
-        if (largerUSet.count(u) > 0)
+    for (auto u : smallerUSet) {
+        if (largerUSet.find(u.first) != largerUSet.end())
             intersectionSize++;
     }
 
@@ -215,11 +215,11 @@ Graph HypergraphTools::cliqueExpansion(Hypergraph &hGraph) {
     Graph cliqueExpansion(hGraph.numberOfNodes());
 
     hGraph.forEdges([&](edgeid eid) {
-        const std::unordered_set<node> &nodesInEdge = hGraph.edgeMembers(eid);
+        const std::unordered_map<node, nodeweight> &nodesInEdge = hGraph.edgeMembers(eid);
         for (auto firstIt = nodesInEdge.begin(); firstIt != nodesInEdge.end(); ++firstIt) {
             for (auto secondIt = std::next(firstIt); secondIt != nodesInEdge.end(); ++secondIt) {
-                node v = *firstIt;
-                node w = *secondIt;
+                node v = (*firstIt).first;
+                node w = (*secondIt).first;
                 if (v > w)
                     cliqueExpansion.addEdge(v, w);
             }
@@ -246,13 +246,14 @@ Graph HypergraphTools::lineExpansion(Hypergraph &hGraph) {
     // In addition set the node attributes in order to maintain the original data
     count currentId = 0;
     hGraph.forEdges([&](edgeid eid) {
-        const std::unordered_set<node> &nodesInEdge = hGraph.edgeMembers(eid);
+        const std::unordered_map<node, nodeweight> &nodesInEdge = hGraph.edgeMembers(eid);
         count currentOrder = hGraph.order(eid);
         node offset = 0;
         for (auto firstIt = nodesInEdge.begin(); firstIt != nodesInEdge.end(); ++firstIt) {
-            attrNodeRef[currentId + offset] = node{*firstIt};
+            attrNodeRef[currentId + offset] = node{(*firstIt).first};
             attrEdgeRef[currentId + offset] = edgeid{eid};
-            lineMap[std::make_pair(node{*firstIt} + offset, edgeid{eid})] = currentId + offset;
+            lineMap[std::make_pair(node{(*firstIt).first} + offset, edgeid{eid})] =
+                currentId + offset;
             for (count nextIdsInEdge = currentId + offset; nextIdsInEdge < currentId + currentOrder;
                  ++nextIdsInEdge) {
                 lineExpansion.addEdge(currentId, nextIdsInEdge);
