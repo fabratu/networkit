@@ -364,6 +364,16 @@ public:
     const std::unordered_set<edgeid> &edgesOf(node u) const { return nodeIncidence[u]; };
 
     /**
+     * Retrieve the edges a given node @a u is part of.
+     *
+     * @param u The node id.
+     * @return The edges containing @a u.
+     */
+    const std::unordered_map<node, nodeweight> &nodesOf(edgeid eid) const {
+        return edgeIncidence[eid];
+    };
+
+    /**
      * Retrieve the neighbors of a given node @a u.
      *
      * @param u The node id.

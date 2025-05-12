@@ -29,8 +29,8 @@ void HyperLeiden::run() {
             std::vector<Aux::HTCustodian> edgeCommunityMemberships(G->upperEdgeIdBound());
             std::vector<Aux::HTCustodian> edgeCommunityVolumes(G->upperEdgeIdBound());
             // TODO: implement
-            initializeMemberships(communityMemberships, communitySizes, edgeCommunityMemberships,
-                                  edgeCommunityVolumes);
+            initializeMemberships(*G, communityMemberships, communitySizes,
+                                  edgeCommunityMemberships, edgeCommunityVolumes);
 
             // Greedy Move Phase
             greedyMovePhase(*G, communityMemberships, communitySizes, edgeCommunityMemberships,
@@ -56,8 +56,8 @@ void HyperLeiden::run() {
             std::vector<count> communitySizes(currentG.upperNodeIdBound(), 0);
             std::vector<Aux::HTCustodian> edgeCommunityMemberships(currentG.upperEdgeIdBound());
             std::vector<Aux::HTCustodian> edgeCommunityVolumes(currentG.upperEdgeIdBound());
-            initializeMemberships(communityMemberships, communitySizes, edgeCommunityMemberships,
-                                  edgeCommunityVolumes);
+            initializeMemberships(currentG, communityMemberships, communitySizes,
+                                  edgeCommunityMemberships, edgeCommunityVolumes);
 
             // Greedy Move Phase
             greedyMovePhase(currentG, communityMemberships, communitySizes,
@@ -148,6 +148,26 @@ Hypergraph HyperLeiden::aggregateHypergraph(const Hypergraph &graph,
 }
 
 // Helper Functions
+
+void HyperLeiden::initializeMemberships(const Hypergraph &graph,
+                                        std::vector<count> &communityMemberships,
+                                        std::vector<count> &communitySizes,
+                                        std::vector<Aux::HTCustodian> &edgeCommunityMemberships,
+                                        std::vector<Aux::HTCustodian> &edgeCommunityVolumes) const {
+    // In the beginning each node is its own community
+    std::iota(std::begin(communityMemberships), std::end(communityMemberships), 0);
+    std::fill(std::begin(communitySizes), std::end(communitySizes), 1);
+
+    graph.parallelForEdges([&](edgeid eId, edgeweight /*/*/) {
+        auto handleMemberships = edgeCommunityMemberships[eId].make_handle();
+        auto handleVolumes = edgeCommunityVolumes[eId].make_handle();
+        auto nodes = graph.nodesOf(eId);
+        for (auto &it : nodes) {
+            handleMemberships->insert(communityMemberships[it.first], 1);
+            handleVolumes->insert(communityMemberships[it.first], it.second);
+        }
+    });
+}
 
 std::unordered_map<count, count>
 HyperLeiden::gatherNeighboringCommunities(const Hypergraph &graph, node v,

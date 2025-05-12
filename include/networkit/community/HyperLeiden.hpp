@@ -70,7 +70,7 @@ private:
                                    const std::vector<count> &communityMemberships);
 
     // Helper Functions
-    void initializeMemberships(std::vector<count> &communityMemberships,
+    void initializeMemberships(const Hypergraph &graph, std::vector<count> &communityMemberships,
                                std::vector<count> &communitySizes,
                                std::vector<Aux::HTCustodian> &edgeCommunityMemberships,
                                std::vector<Aux::HTCustodian> &edgeCommunityVolumes) const;
