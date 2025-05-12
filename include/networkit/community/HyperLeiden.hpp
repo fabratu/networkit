@@ -98,29 +98,64 @@ private:
                      const std::vector<Aux::HTCustodian> &edgeCommunityVolumes) const;
 
     // maps to "leidenChangeCommunity" in GVE-Leiden
-    // TODO: missing update of edgeCommunityMemberships
     template <bool Refine = false>
-    bool updateMemberships(node v, count bestCommunity, std::vector<count> &communityMemberships,
-                           std::vector<count> &communitySizes) {
+    bool updateMemberships(const Hypergraph &graph, node v, count bestCommunity,
+                           std::vector<count> &communityMemberships,
+                           std::vector<count> &communitySizes,
+                           std::vector<Aux::HTCustodian> &edgeCommunityMemberships,
+                           std::vector<Aux::HTCustodian> &edgeCommunityVolumes) const {
         count currentMembership = communityMemberships[v];
         if (Refine) {
             count tmpCSize = 0;
+            bool validUpdate = true;
 #pragma omp atomic capture
             {
                 tmpCSize = communitySizes[currentMembership];
-                communitySizes[currentMembership]--; // TODO: add node weights
+                communitySizes[currentMembership]--;
             }
-            if (tmpCSize > 1) { // TODO: add node weights
+            if (tmpCSize > 1) {
 #pragma omp atomic
                 communitySizes[currentMembership]++;
+                validUpdate = false;
+            }
+            if (!validUpdate) {
                 return false;
             }
+            auto handleMemberships = edgeCommunityMemberships[v].make_handle();
+            auto handleVolumes = edgeCommunityVolumes[v].make_handle();
+            auto currentMemberships = handleMemberships->find(v);
+            auto currentVolumes = handleVolumes->find(v);
+            handleMemberships->update(currentMembership, currentMemberships - 1);
+            handleVolumes->update(currentMembership, currentVolumes - graph.getNodeWeight(v));
         } else {
+            auto edgesOf = graph.edgesOf(v);
+            for (auto &it : edgesOf) {
+                auto handleMemberships = edgeCommunityMemberships[it].make_handle();
+                auto handleVolumes = edgeCommunityVolumes[it].make_handle();
+                auto currentMemberships = handleMemberships->find(v);
+                auto currentVolumes = handleVolumes->find(v);
+                handleMemberships->update(currentMembership, currentMemberships - 1);
+                handleVolumes->update(currentMembership, currentVolumes - graph.getNodeWeight(v));
+            }
 #pragma omp atomic
-            communitySizes[currentMembership]--; // TODO: add node weights
+            communitySizes[currentMembership]--;
+        }
+        auto edgesOf = graph.edgesOf(v);
+        for (auto &it : edgesOf) {
+            auto handleMemberships = edgeCommunityMemberships[it].make_handle();
+            auto handleVolumes = edgeCommunityVolumes[it].make_handle();
+            auto bestMemberships = handleMemberships->find(v);
+            auto bestVolumes = handleVolumes->find(v);
+            if (v == Aux::ht_invalid_key) {
+                handleMemberships->insert(bestCommunity, 1);
+                handleVolumes->insert(bestCommunity, graph.getNodeWeight(v));
+            } else {
+                handleMemberships->update(bestMemberships, bestMemberships + 1);
+                handleVolumes->update(bestMemberships, bestVolumes + graph.getNodeWeight(v));
+            }
         }
 #pragma omp atomic
-        communitySizes[bestCommunity]++; // TODO: add node weights
+        communitySizes[bestCommunity]++;
         communityMemberships[v] = bestCommunity;
         return true;
     }
@@ -131,7 +166,7 @@ private:
     int numberOfIterations;
     RefinementStrategy refinementStrategy;
     CoarseningStrategy coarseningStrategy;
-};
+}; // namespace NetworKit
 
 } // namespace NetworKit
 

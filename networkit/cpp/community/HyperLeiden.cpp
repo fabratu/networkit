@@ -100,7 +100,8 @@ void HyperLeiden::greedyMovePhase(const Hypergraph &graph, std::vector<count> &c
                 getBestCommunity(graph, u, communityMemberships, communitySizes,
                                  edgeCommunityMemberships, edgeCommunityVolumes);
             if (bestCommunity != communityMemberships[u]) {
-                updateMemberships(u, bestCommunity, communityMemberships, communitySizes);
+                updateMemberships(graph, u, bestCommunity, communityMemberships, communitySizes,
+                                  edgeCommunityMemberships, edgeCommunityVolumes);
                 graph.forNeighborsOf(u, [&](node w) { vaff[w] = true; });
 #pragma omp atomic
                 gainPerRound += gain;
@@ -134,7 +135,9 @@ void HyperLeiden::refineDisconnected(const Hypergraph &graph,
                 graph, u, communityMemberships, communitySizes, edgeCommunityMemberships,
                 edgeCommunityVolumes, referenceCommunityMemberships);
             if (bestCommunity != communityMemberships[u]) {
-                if (updateMemberships<true>(u, bestCommunity, communityMemberships, communitySizes))
+                if (updateMemberships<true>(graph, u, bestCommunity, communityMemberships,
+                                            communitySizes, edgeCommunityMemberships,
+                                            edgeCommunityVolumes))
                     graph.forNeighborsOf(u, [&](node w) { vaff[w] = true; });
             }
         });
