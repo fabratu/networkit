@@ -317,9 +317,8 @@ public:
      * @param eid The edge id.
      * @return The node weight of @a u or 0 if node does not exist.
      */
-    nodeweight getNodeWeightOf(node u, edgeid eid) const {
-        return edgeIncidence[eid].find(u)->second;
-    }
+    // TODO: better use [] op, but how with const?
+    nodeweight getNodeWeightOf(node u, edgeid eid) const { return edgeIncidence[eid].at(u); }
 
     /**
      * Set the weight of a node. If the node does not exist,
