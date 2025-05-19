@@ -97,6 +97,12 @@ private:
                      const std::vector<Aux::HTCustodian> &edgeCommunityMemberships,
                      const std::vector<Aux::HTCustodian> &edgeCommunityVolumes) const;
 
+    // maps to "leidenRenumberCommunitiesW" in GVE-Leiden
+    void renumberCommunities(const Hypergraph &graph, const std::vector<count> &communitySizes);
+
+    // maps to "exclusiveScanW" in GVE-Leiden
+    void prefixSum(std::vector<count> &communityIndicator);
+
     // maps to "leidenChangeCommunity" in GVE-Leiden
     template <bool Refine = false>
     bool updateMemberships(const Hypergraph &graph, node v, count bestCommunity,

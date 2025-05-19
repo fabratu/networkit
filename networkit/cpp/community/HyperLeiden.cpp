@@ -147,6 +147,18 @@ void HyperLeiden::refineDisconnected(const Hypergraph &graph,
 Hypergraph HyperLeiden::aggregateHypergraph(const Hypergraph &graph,
                                             const std::vector<count> &communityMemberships) {
     // nothing here yet
+    // Plan:
+    // 1: Renumber communities based on prefix sum
+    // 2: Create new hypergraph with number of nodes = number of communities
+    // 3: Iterate over edges of the original hypergraph
+    // 3a: For each edge, if singleton, add to new hypergraph and track the community id (vector of
+    // comm ids) 3b: For each edge, if not singleton, create hash of sorted membership vectors (hash
+    // combine) and add to a hash database, which maps set-hashes to edge ids. TODO: maybe there is
+    // something more efficient here
+    // 4: For each hash in the hash database, create a new edge in the new hypergraph and add the
+    // corresponding node ids with their combined weights.
+    // 5: Create a map from the old node ids to the new node ids (?)
+
     return Hypergraph();
 }
 
@@ -233,6 +245,33 @@ double HyperLeiden::deltaHCPM(const Hypergraph &graph, node v, count c1, count c
         });
     }
     return delta_e - delta_n;
+};
+
+std::vector<bool> HyperLeiden::communityExists(const Hypergraph &graph, node v, count bestCommunity,
+                                               const std::vector<count> &communityMemberships,
+                                               const std::vector<count> &communitySizes) const {
+    std::vector<bool> communityExists(graph.upperNodeIdBound(), false);
+#pragma omp parallel for
+    for (omp_index i = 0; i < communityMemberships.size(); i++) {
+        communityExists[communityMemberships[i]] = true;
+    }
+    return communityExists;
+};
+
+void HyperLeiden::renumberCommunities(const Hypergraph &graph,
+                                      const std::vector<count> &communitySizes){
+
+};
+
+void HyperLeiden::prefixSum(std::vector<bool> &communityExists) {
+    for (auto entry : communityExists) {
+
+        if (entry) {
+            entry = true;
+        } else {
+            entry = false;
+        }
+    }
 };
 
 } // namespace NetworKit
