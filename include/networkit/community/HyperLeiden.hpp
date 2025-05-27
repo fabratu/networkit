@@ -67,7 +67,8 @@ private:
                             std::vector<count> &referenceCommunityMemberships);
 
     Hypergraph aggregateHypergraph(const Hypergraph &graph,
-                                   const std::vector<count> &communityMemberships);
+                                   std::vector<count> &communityMemberships,
+                                   std::vector<count> &communitySizes);
 
     // Helper Functions
     void initializeMemberships(const Hypergraph &graph, std::vector<count> &communityMemberships,
@@ -98,10 +99,8 @@ private:
                      const std::vector<Aux::ParallelHashMap> &edgeCommunityVolumes) const;
 
     // maps to "leidenRenumberCommunitiesW" in GVE-Leiden
-    void renumberCommunities(const Hypergraph &graph, const std::vector<count> &communitySizes);
-
-    // maps to "exclusiveScanW" in GVE-Leiden
-    void prefixSum(std::vector<count> &communityIndicator);
+    void renumberCommunities(std::vector<count> &communityMemberships,
+                             std::vector<count> &communitySizes);
 
     // maps to "leidenChangeCommunity" in GVE-Leiden
     template <bool Refine = false>
@@ -169,8 +168,6 @@ private:
     std::vector<bool> communityExists(const Hypergraph &graph, node v, count bestCommunity,
                                       const std::vector<count> &communityMemberships,
                                       const std::vector<count> &communitySizes) const;
-
-    void prefixSum(std::vector<bool> &communityExists);
 
     // Hyperparameter
     double gamma;              // Resolution parameter
