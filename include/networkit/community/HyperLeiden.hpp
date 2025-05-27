@@ -19,8 +19,8 @@
 #include <tlx/unused.hpp>
 
 #include <networkit/Globals.hpp>
-#include <networkit/auxiliary/DynamicParallelHashTable.hpp>
 #include <networkit/auxiliary/Parallel.hpp>
+#include <networkit/auxiliary/ParallelHashMap.hpp>
 #include <networkit/auxiliary/Parallelism.hpp>
 #include <networkit/auxiliary/SignalHandling.hpp>
 #include <networkit/auxiliary/Timer.hpp>
@@ -57,13 +57,13 @@ private:
     // maps to "leiderMoveOmpW" in GVE-Leiden
     void greedyMovePhase(const Hypergraph &graph, std::vector<count> &communityMemberships,
                          std::vector<count> &communitySizes,
-                         std::vector<Aux::HTCustodian> &edgeCommunityMemberships,
-                         std::vector<Aux::HTCustodian> &edgeCommunityVolumes);
+                         std::vector<Aux::ParallelHashMap> &edgeCommunityMemberships,
+                         std::vector<Aux::ParallelHashMap> &edgeCommunityVolumes);
 
     void refineDisconnected(const Hypergraph &graph, std::vector<count> &communityMemberships,
                             std::vector<count> &communitySizes,
-                            std::vector<Aux::HTCustodian> &edgeCommunityMemberships,
-                            std::vector<Aux::HTCustodian> &edgeCommunityVolumes,
+                            std::vector<Aux::ParallelHashMap> &edgeCommunityMemberships,
+                            std::vector<Aux::ParallelHashMap> &edgeCommunityVolumes,
                             std::vector<count> &referenceCommunityMemberships);
 
     Hypergraph aggregateHypergraph(const Hypergraph &graph,
@@ -72,8 +72,8 @@ private:
     // Helper Functions
     void initializeMemberships(const Hypergraph &graph, std::vector<count> &communityMemberships,
                                std::vector<count> &communitySizes,
-                               std::vector<Aux::HTCustodian> &edgeCommunityMemberships,
-                               std::vector<Aux::HTCustodian> &edgeCommunityVolumes) const;
+                               std::vector<Aux::ParallelHashMap> &edgeCommunityMemberships,
+                               std::vector<Aux::ParallelHashMap> &edgeCommunityVolumes) const;
 
     // maps to "leidenScanCommunityW" in GVE-Leiden
     std::unordered_map<count, count>
@@ -86,16 +86,16 @@ private:
     getBestCommunity(const Hypergraph &graph, node v,
                      const std::vector<count> &communityMemberships,
                      const std::vector<count> &communitySizes,
-                     const std::vector<Aux::HTCustodian> &edgeCommunityMemberships,
-                     const std::vector<Aux::HTCustodian> &edgeCommunityVolumes,
+                     const std::vector<Aux::ParallelHashMap> &edgeCommunityMemberships,
+                     const std::vector<Aux::ParallelHashMap> &edgeCommunityVolumes,
                      const std::vector<count> &referenceCommunityMemberships = {}) const;
 
     // maps to "deltaModularity" in GVE-Leiden
     double deltaHCPM(const Hypergraph &graph, node v, count c1, count c2, count c1Size,
                      count c2Size, const std::vector<count> &communityMemberships,
                      const std::vector<count> &communitySizes,
-                     const std::vector<Aux::HTCustodian> &edgeCommunityMemberships,
-                     const std::vector<Aux::HTCustodian> &edgeCommunityVolumes) const;
+                     const std::vector<Aux::ParallelHashMap> &edgeCommunityMemberships,
+                     const std::vector<Aux::ParallelHashMap> &edgeCommunityVolumes) const;
 
     // maps to "leidenRenumberCommunitiesW" in GVE-Leiden
     void renumberCommunities(const Hypergraph &graph, const std::vector<count> &communitySizes);
@@ -108,8 +108,8 @@ private:
     bool updateMemberships(const Hypergraph &graph, node v, count bestCommunity,
                            std::vector<count> &communityMemberships,
                            std::vector<count> &communitySizes,
-                           std::vector<Aux::HTCustodian> &edgeCommunityMemberships,
-                           std::vector<Aux::HTCustodian> &edgeCommunityVolumes) const {
+                           std::vector<Aux::ParallelHashMap> &edgeCommunityMemberships,
+                           std::vector<Aux::ParallelHashMap> &edgeCommunityVolumes) const {
         count currentMembership = communityMemberships[v];
         if (Refine) {
             count tmpCSize = 0;
@@ -127,8 +127,8 @@ private:
             if (!validUpdate) {
                 return false;
             }
-            auto handleMemberships = edgeCommunityMemberships[v].make_handle();
-            auto handleVolumes = edgeCommunityVolumes[v].make_handle();
+            auto handleMemberships = edgeCommunityMemberships[v].makeHandle();
+            auto handleVolumes = edgeCommunityVolumes[v].makeHandle();
             auto currentMemberships = handleMemberships->find(v);
             auto currentVolumes = handleVolumes->find(v);
             handleMemberships->update(currentMembership, currentMemberships - 1);
@@ -136,8 +136,8 @@ private:
         } else {
             auto edgesOf = graph.edgesOf(v);
             for (auto &it : edgesOf) {
-                auto handleMemberships = edgeCommunityMemberships[it].make_handle();
-                auto handleVolumes = edgeCommunityVolumes[it].make_handle();
+                auto handleMemberships = edgeCommunityMemberships[it].makeHandle();
+                auto handleVolumes = edgeCommunityVolumes[it].makeHandle();
                 auto currentMemberships = handleMemberships->find(v);
                 auto currentVolumes = handleVolumes->find(v);
                 handleMemberships->update(currentMembership, currentMemberships - 1);
@@ -148,11 +148,11 @@ private:
         }
         auto edgesOf = graph.edgesOf(v);
         for (auto &it : edgesOf) {
-            auto handleMemberships = edgeCommunityMemberships[it].make_handle();
-            auto handleVolumes = edgeCommunityVolumes[it].make_handle();
+            auto handleMemberships = edgeCommunityMemberships[it].makeHandle();
+            auto handleVolumes = edgeCommunityVolumes[it].makeHandle();
             auto bestMemberships = handleMemberships->find(v);
             auto bestVolumes = handleVolumes->find(v);
-            if (v == Aux::ht_invalid_key) {
+            if (v == Aux::ParallelHashMap::ht_invalid_key) {
                 handleMemberships->insert(bestCommunity, 1);
                 handleVolumes->insert(bestCommunity, graph.getNodeWeight(v));
             } else {
@@ -165,6 +165,12 @@ private:
         communityMemberships[v] = bestCommunity;
         return true;
     }
+
+    std::vector<bool> communityExists(const Hypergraph &graph, node v, count bestCommunity,
+                                      const std::vector<count> &communityMemberships,
+                                      const std::vector<count> &communitySizes) const;
+
+    void prefixSum(std::vector<bool> &communityExists);
 
     // Hyperparameter
     double gamma;              // Resolution parameter

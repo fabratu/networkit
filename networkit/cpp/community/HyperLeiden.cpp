@@ -26,8 +26,8 @@ void HyperLeiden::run() {
             // Initialize memberships + sizes
             std::vector<count> communityMemberships(G->upperNodeIdBound(), 0);
             std::vector<count> communitySizes(G->upperNodeIdBound(), 0);
-            std::vector<Aux::HTCustodian> edgeCommunityMemberships(G->upperEdgeIdBound());
-            std::vector<Aux::HTCustodian> edgeCommunityVolumes(G->upperEdgeIdBound());
+            std::vector<Aux::ParallelHashMap> edgeCommunityMemberships(G->upperEdgeIdBound());
+            std::vector<Aux::ParallelHashMap> edgeCommunityVolumes(G->upperEdgeIdBound());
             // TODO: implement
             initializeMemberships(*G, communityMemberships, communitySizes,
                                   edgeCommunityMemberships, edgeCommunityVolumes);
@@ -41,8 +41,9 @@ void HyperLeiden::run() {
             if (refinementStrategy == RefinementStrategy::DISCONNECTED) {
                 std::vector<count> tmpCommunityMemberships(G->upperNodeIdBound(), 0);
                 std::vector<count> tmpCommunitySizes(G->upperNodeIdBound(), 0);
-                std::vector<Aux::HTCustodian> tmpEdgeCommunityMemberships(G->upperEdgeIdBound());
-                std::vector<Aux::HTCustodian> tmpEdgeCommunityVolumes(G->upperEdgeIdBound());
+                std::vector<Aux::ParallelHashMap> tmpEdgeCommunityMemberships(
+                    G->upperEdgeIdBound());
+                std::vector<Aux::ParallelHashMap> tmpEdgeCommunityVolumes(G->upperEdgeIdBound());
                 refineDisconnected(*G, tmpCommunityMemberships, tmpCommunityMemberships,
                                    tmpEdgeCommunityMemberships, tmpEdgeCommunityVolumes,
                                    communityMemberships);
@@ -54,8 +55,8 @@ void HyperLeiden::run() {
             // Initialize memberships + sizes
             std::vector<count> communityMemberships(currentG.upperNodeIdBound(), 0);
             std::vector<count> communitySizes(currentG.upperNodeIdBound(), 0);
-            std::vector<Aux::HTCustodian> edgeCommunityMemberships(currentG.upperEdgeIdBound());
-            std::vector<Aux::HTCustodian> edgeCommunityVolumes(currentG.upperEdgeIdBound());
+            std::vector<Aux::ParallelHashMap> edgeCommunityMemberships(currentG.upperEdgeIdBound());
+            std::vector<Aux::ParallelHashMap> edgeCommunityVolumes(currentG.upperEdgeIdBound());
             initializeMemberships(currentG, communityMemberships, communitySizes,
                                   edgeCommunityMemberships, edgeCommunityVolumes);
 
@@ -67,8 +68,9 @@ void HyperLeiden::run() {
             if (refinementStrategy == RefinementStrategy::DISCONNECTED) {
                 std::vector<count> tmpCommunityMemberships(currentG.upperNodeIdBound(), 0);
                 std::vector<count> tmpCommunitySizes(currentG.upperNodeIdBound(), 0);
-                std::vector<Aux::HTCustodian> tmpEdgeCommunityMemberships(G->upperEdgeIdBound());
-                std::vector<Aux::HTCustodian> tmpEdgeCommunityVolumes(G->upperEdgeIdBound());
+                std::vector<Aux::ParallelHashMap> tmpEdgeCommunityMemberships(
+                    G->upperEdgeIdBound());
+                std::vector<Aux::ParallelHashMap> tmpEdgeCommunityVolumes(G->upperEdgeIdBound());
                 refineDisconnected(currentG, tmpCommunityMemberships, tmpCommunityMemberships,
                                    tmpEdgeCommunityMemberships, tmpEdgeCommunityVolumes,
                                    communityMemberships);
@@ -82,8 +84,8 @@ void HyperLeiden::run() {
 
 void HyperLeiden::greedyMovePhase(const Hypergraph &graph, std::vector<count> &communityMemberships,
                                   std::vector<count> &communitySizes,
-                                  std::vector<Aux::HTCustodian> &edgeCommunityMemberships,
-                                  std::vector<Aux::HTCustodian> &edgeCommunityVolumes) {
+                                  std::vector<Aux::ParallelHashMap> &edgeCommunityMemberships,
+                                  std::vector<Aux::ParallelHashMap> &edgeCommunityVolumes) {
 
     count maxIter = 100;
 
@@ -117,8 +119,8 @@ void HyperLeiden::greedyMovePhase(const Hypergraph &graph, std::vector<count> &c
 void HyperLeiden::refineDisconnected(const Hypergraph &graph,
                                      std::vector<count> &communityMemberships,
                                      std::vector<count> &communitySizes,
-                                     std::vector<Aux::HTCustodian> &edgeCommunityMemberships,
-                                     std::vector<Aux::HTCustodian> &edgeCommunityVolumes,
+                                     std::vector<Aux::ParallelHashMap> &edgeCommunityMemberships,
+                                     std::vector<Aux::ParallelHashMap> &edgeCommunityVolumes,
                                      std::vector<count> &referenceCommunityMemberships) {
 
     count maxIter = 100;
@@ -146,7 +148,8 @@ void HyperLeiden::refineDisconnected(const Hypergraph &graph,
 
 Hypergraph HyperLeiden::aggregateHypergraph(const Hypergraph &graph,
                                             const std::vector<count> &communityMemberships) {
-    // nothing here yet
+
+        // nothing here yet
     // Plan:
     // 1: Renumber communities based on prefix sum
     // 2: Create new hypergraph with number of nodes = number of communities
@@ -164,18 +167,17 @@ Hypergraph HyperLeiden::aggregateHypergraph(const Hypergraph &graph,
 
 // Helper Functions
 
-void HyperLeiden::initializeMemberships(const Hypergraph &graph,
-                                        std::vector<count> &communityMemberships,
-                                        std::vector<count> &communitySizes,
-                                        std::vector<Aux::HTCustodian> &edgeCommunityMemberships,
-                                        std::vector<Aux::HTCustodian> &edgeCommunityVolumes) const {
+void HyperLeiden::initializeMemberships(
+    const Hypergraph &graph, std::vector<count> &communityMemberships,
+    std::vector<count> &communitySizes, std::vector<Aux::ParallelHashMap> &edgeCommunityMemberships,
+    std::vector<Aux::ParallelHashMap> &edgeCommunityVolumes) const {
     // In the beginning each node is its own community
     std::iota(std::begin(communityMemberships), std::end(communityMemberships), 0);
     std::fill(std::begin(communitySizes), std::end(communitySizes), 1);
 
     graph.parallelForEdges([&](edgeid eId, edgeweight /*/*/) {
-        auto handleMemberships = edgeCommunityMemberships[eId].make_handle();
-        auto handleVolumes = edgeCommunityVolumes[eId].make_handle();
+        auto handleMemberships = edgeCommunityMemberships[eId].makeHandle();
+        auto handleVolumes = edgeCommunityVolumes[eId].makeHandle();
         auto nodes = graph.nodesOf(eId);
         for (auto &it : nodes) {
             handleMemberships->insert(communityMemberships[it.first], 1);
@@ -201,8 +203,8 @@ std::pair<count, double>
 HyperLeiden::getBestCommunity(const Hypergraph &graph, node v,
                               const std::vector<count> &communityMemberships,
                               const std::vector<count> &communitySizes,
-                              const std::vector<Aux::HTCustodian> &edgeCommunityMemberships,
-                              const std::vector<Aux::HTCustodian> &edgeCommunityVolumes,
+                              const std::vector<Aux::ParallelHashMap> &edgeCommunityMemberships,
+                              const std::vector<Aux::ParallelHashMap> &edgeCommunityVolumes,
                               const std::vector<count> &referenceCommunityMemberships) const {
     auto [oldCommunity, oldSize] =
         std::make_pair(communityMemberships[v], communitySizes[communityMemberships[v]]);
@@ -225,8 +227,8 @@ HyperLeiden::getBestCommunity(const Hypergraph &graph, node v,
 double HyperLeiden::deltaHCPM(const Hypergraph &graph, node v, count c1, count c2, count c1Size,
                               count c2Size, const std::vector<count> &communityMemberships,
                               const std::vector<count> &communitySizes,
-                              const std::vector<Aux::HTCustodian> &edgeCommunityMemberships,
-                              const std::vector<Aux::HTCustodian> &edgeCommunityVolumes) const {
+                              const std::vector<Aux::ParallelHashMap> &edgeCommunityMemberships,
+                              const std::vector<Aux::ParallelHashMap> &edgeCommunityVolumes) const {
     double delta_n = 0.0;
     double delta_e = 0.0;
     count rho_total = graph.edgeVolume();
@@ -236,10 +238,11 @@ double HyperLeiden::deltaHCPM(const Hypergraph &graph, node v, count c1, count c
         graph.forEdges([&](edgeid eId, edgeweight eWeight) {
             if (graph.hasNode(v, eId)) {
                 nodeweight nWeight = graph.getNodeWeightOf(v, eId);
-                count jFactor = edgeCommunityVolumes[eId].current_table()->find(c2) + 2 * nWeight;
-                count iFactor = edgeCommunityVolumes[eId].current_table()->find(c1) + nWeight;
-                count c2eSize = edgeCommunityMemberships[eId].current_table()->find(c2);
-                count c1eSize = edgeCommunityMemberships[eId].current_table()->find(c1);
+                // TODO: use handles
+                count jFactor = edgeCommunityVolumes[eId].currentTable()->find(c2) + 2 * nWeight;
+                count iFactor = edgeCommunityVolumes[eId].currentTable()->find(c1) + nWeight;
+                count c2eSize = edgeCommunityMemberships[eId].currentTable()->find(c2);
+                count c1eSize = edgeCommunityMemberships[eId].currentTable()->find(c1);
                 delta_e += eWeight * ((2 << c2eSize) * jFactor - (2 << (c1eSize - 1)) * iFactor);
             }
         });

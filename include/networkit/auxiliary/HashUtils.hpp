@@ -1,9 +1,6 @@
 #ifndef NETWORKIT_AUXILIARY_HASH_UTILS_HPP_
 #define NETWORKIT_AUXILIARY_HASH_UTILS_HPP_
 
-#include <cmath>
-#include <cstddef>
-#include <cstdint>
 #include <utility>
 
 namespace Aux {
@@ -16,17 +13,12 @@ void hashCombine(std::size_t &seed, T const &v) {
     seed ^= std::hash<T>()(v) + 0x9e3779b9 + (seed << 6) + (seed >> 2);
 }
 
-struct PairHash {
-    template <typename A, typename B>
-    std::size_t operator()(const std::pair<A, B> &pair) const {
-        std::size_t seed = 0;
-        hashCombine(seed, pair.first);
-        hashCombine(seed, pair.second);
-        return seed;
-    }
-};
-
-constexpr uint64_t ht_key_space = sizeof(uint64_t) * 8;
+// capacity: must be power of 2
+// T shall be unsigned.
+template <typename T>
+T fastMod(T const idx, size_t const capacity) {
+    return idx & (capacity - 1);
+}
 
 // Thanks to David Stafford for his further research on Austin Appleby's
 // MurmurHash3 specifically for input values with low entropy such as it is the
@@ -54,18 +46,15 @@ inline uint64_t hash64(uint64_t x) {
     return x;
 }
 
-// From 5.3.1 of "Concurrent Hash Tables: Fast and general(?)!" from Maier et
-// al. (2016): h_c(x) := floor(h(x) * (c/U)) where c = capacity and U = key
-// space = 64 (bit) in our case. Since capacity and U are both power of 2 we can
-// change the formula to use bit-shifting.
-inline uint64_t scaling(uint64_t const h, size_t const capacity) {
-    return h >> uint64_t(ht_key_space - std::log2(capacity));
-}
-
-// Use this if you already precomputed log2(capacity).
-inline uint64_t scaling_log(uint64_t const h, uint64_t const log_2_capacity) {
-    return h >> (ht_key_space - log_2_capacity);
-}
+struct PairHash {
+    template <typename A, typename B>
+    std::size_t operator()(const std::pair<A, B> &pair) const {
+        std::size_t seed = 0;
+        hashCombine(seed, pair.first);
+        hashCombine(seed, pair.second);
+        return seed;
+    }
+};
 
 } // namespace Aux
 
