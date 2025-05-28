@@ -161,6 +161,14 @@ void Hypergraph::setNodeWeightOf(node u, edgeid eid, nodeweight nw) {
     edgeIncidence[tempEid][u] = nw;
 }
 
+void Hypergraph::updateNodeWeightOf(node u, edgeid eid, nodeweight update) {
+
+    if (!weighted)
+        return;
+
+    edgeIncidence[eid][u] += update;
+}
+
 count Hypergraph::degree(node u) const {
     assert(u < nextNodeId);
 

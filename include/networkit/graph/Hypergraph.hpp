@@ -340,6 +340,16 @@ public:
     void setNodeWeightOf(node u, edgeid eid, nodeweight nw);
 
     /**
+     * Update the weight of a node in a hyperedge. If the node/edge does not exist,
+     * the missing element will be inserted.
+     *
+     * @param[in] u The node id.
+     * @param[in] eid The edge id.
+     * @param[in] update The node weight.
+     */
+    void updateNodeWeightOf(node u, edgeid eid, nodeweight update);
+
+    /**
      * Returns the (unweighted) degree of a node.
      *
      * @param u The node id.

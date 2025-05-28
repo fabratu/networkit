@@ -70,6 +70,9 @@ private:
                                    std::vector<count> &communityMemberships,
                                    std::vector<count> &communitySizes);
 
+    std::vector<node> createMapping(const std::vector<count> &communityMemberships,
+                                    const std::vector<count> &communitySizes) const;
+
     // Helper Functions
     void initializeMemberships(const Hypergraph &graph, std::vector<count> &communityMemberships,
                                std::vector<count> &communitySizes,
@@ -175,6 +178,7 @@ private:
     int numberOfIterations;
     RefinementStrategy refinementStrategy;
     CoarseningStrategy coarseningStrategy;
+    std::vector<std::vector<node>> mappings;
 }; // namespace NetworKit
 
 } // namespace NetworKit

@@ -19,6 +19,7 @@ void HyperLeiden::run() {
     int maxPasses = 0;
     bool isFirst = true;
     Hypergraph currentG;
+    mappings.clear();
 
     for (int pass = 0; pass < maxPasses; pass++) {
 
@@ -28,7 +29,6 @@ void HyperLeiden::run() {
             std::vector<count> communitySizes(G->upperNodeIdBound(), 0);
             std::vector<Aux::ParallelHashMap> edgeCommunityMemberships(G->upperEdgeIdBound());
             std::vector<Aux::ParallelHashMap> edgeCommunityVolumes(G->upperEdgeIdBound());
-            // TODO: implement
             initializeMemberships(*G, communityMemberships, communitySizes,
                                   edgeCommunityMemberships, edgeCommunityVolumes);
 
@@ -37,7 +37,6 @@ void HyperLeiden::run() {
                             edgeCommunityVolumes);
 
             // Refine disconnected communities
-
             if (refinementStrategy == RefinementStrategy::DISCONNECTED) {
                 std::vector<count> tmpCommunityMemberships(G->upperNodeIdBound(), 0);
                 std::vector<count> tmpCommunitySizes(G->upperNodeIdBound(), 0);
@@ -78,6 +77,9 @@ void HyperLeiden::run() {
 
             // Aggregate hypergraph
             currentG = aggregateHypergraph(currentG, communityMemberships, communitySizes);
+
+            // Create mapping
+            mappings.push_back(createMapping(communityMemberships, communitySizes));
         }
     }
 }
@@ -150,15 +152,30 @@ Hypergraph HyperLeiden::aggregateHypergraph(const Hypergraph &graph,
                                             std::vector<count> &communityMemberships,
                                             std::vector<count> &communitySizes) {
 
-    // nothing here yet
-    // Plan:
-    // 1: Renumber communities based on prefix sum
+    // Renumber communities based on prefix sum
     renumberCommunities(communityMemberships, communitySizes);
 
-    // 2: Create new hypergraph with number of nodes = number of communities
+    // Create new hypergraph with number of nodes = number of communities
     Hypergraph aggHypergraph(communitySizes[communitySizes.size() - 1], 0, true);
 
-    // 3: Iterate over edges of the original hypergraph
+    // TODO: maybe there is something more efficient here
+    // Iterate over edges of the original hypergraph
+    // For each edge, if singleton, add to new hypergraph and track the community id
+    // (vector of comm ids) For each edge, if not singleton, create hash of sorted
+    // membership vectors (hash combine) and add to a hash database, which maps
+    // set-hashes to edge ids.
+    // For each hash in the hash database, create a new edge in the new hypergraph and add
+    // the corresponding node ids with their combined weights.
+    auto convertBitsToNodes = [&](const std::vector<bool> &communityBits) {
+        std::vector<node> nodesInEdge;
+        for (size_t i = 0; i < communityBits.size(); ++i) {
+            if (communityBits[i]) {
+                nodesInEdge.push_back(i);
+            }
+        }
+        return nodesInEdge;
+    };
+
     std::unordered_map<std::vector<bool>, std::vector<edgeid>> hashDatabase;
     graph.forEdges([&](edgeid eId) {
         auto nodes = graph.nodesOf(eId);
@@ -191,21 +208,19 @@ Hypergraph HyperLeiden::aggregateHypergraph(const Hypergraph &graph,
                 hashDatabase[communityBits].push_back(eId);
             }
         }
-        // 3a: For each node in the edge, get its community id and add to membership vector
 
-        // 3b: If singleton edge, add to new hypergraph
-
-        // 3c: Sort and create a hash of the membership vector
-
-        // 3d: Add to hash database (not implemented yet)
-
-        // 3a: For each edge, if singleton, add to new hypergraph and track the community id
-        // (vector of comm ids) 3b: For each edge, if not singleton, create hash of sorted
-        // membership vectors (hash combine) and add to a hash database, which maps
-        // set-hashes to edge ids. TODO: maybe there is something more efficient here 4: For
-        // each hash in the hash database, create a new edge in the new hypergraph and add
-        // the corresponding node ids with their combined weights. 5: Create a map from the
-        // old node ids to the new node ids (?)
+        for (const auto &entry : hashDatabase) {
+            // Add edge to hypergraph
+            edgeid newEdge = aggHypergraph.addEdge(convertBitsToNodes(entry.first));
+            // Gather weights from the edges in the hash database
+            for (const auto edgeId : entry.second) {
+                auto edgeNodes = graph.nodesOf(edgeId);
+                for (const auto &nodeEntry : edgeNodes) {
+                    aggHypergraph.updateNodeWeightOf(newEdge, communityMemberships[nodeEntry.first],
+                                                     nodeEntry.second);
+                }
+            }
+        }
     });
     return aggHypergraph;
 }
@@ -325,5 +340,14 @@ void HyperLeiden::renumberCommunities(std::vector<count> &communityMemberships,
         communityMemberships[i] = communitySizes[communityMemberships[i]];
     }
 };
+
+std::vector<node> HyperLeiden::createMapping(const std::vector<count> &communityMemberships,
+                                             const std::vector<count> &communitySizes) const {
+    std::vector<node> mapping(communitySizes[communitySizes.size() - 1]);
+    for (size_t i = 0; i < communityMemberships.size(); i++) {
+        mapping[communityMemberships[i]] = i;
+    }
+    return mapping;
+}
 
 } // namespace NetworKit
