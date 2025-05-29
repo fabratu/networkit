@@ -172,6 +172,8 @@ private:
                                       const std::vector<count> &communityMemberships,
                                       const std::vector<count> &communitySizes) const;
 
+    void flattenPartition();
+
     // Hyperparameter
     double gamma;              // Resolution parameter
     double tolerance = 0.0001; // Tolerance for the greedy move phase

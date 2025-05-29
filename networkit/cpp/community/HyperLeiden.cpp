@@ -82,6 +82,9 @@ void HyperLeiden::run() {
             mappings.push_back(createMapping(communityMemberships, communitySizes));
         }
     }
+
+    // TODO: unroll mappings to get final community memberships
+    flattenPartition();
 }
 
 void HyperLeiden::greedyMovePhase(const Hypergraph &graph, std::vector<count> &communityMemberships,
@@ -350,4 +353,28 @@ std::vector<node> HyperLeiden::createMapping(const std::vector<count> &community
     return mapping;
 }
 
+void HyperLeiden::flattenPartition() {
+    if (mappings.empty()) {
+        return;
+    }
+    // Create a new partition with size |V(G)| (the fine/bigger Graph)
+    Partition flattenedPartition(G->numberOfNodes());
+    flattenedPartition.setUpperBound(G->numberOfNodes());
+    int i = mappings.size() - 1;
+    std::vector<node> &lower = mappings[i--];
+    while (i >= 0) {
+        // iteratively "resolve" (i.e compose) mappings. Let "lower" be a mapping thats
+        // below "higher" in the hierarchy (i.e. of a later aggregation)
+        // If higher[index] = z and lower[z] = x then set higher[index] = x
+        std::vector<node> &upper = mappings[i--];
+        for (auto &idx : upper) {
+            idx = lower[idx];
+        }
+        lower = upper;
+    }
+    G->parallelForNodes([&](node a) { flattenedPartition[a] = lower[a]; });
+    flattenedPartition.compact(true);
+    result = flattenedPartition;
+    mappings.clear();
+}
 } // namespace NetworKit
