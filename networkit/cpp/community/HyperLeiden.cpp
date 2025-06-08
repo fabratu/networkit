@@ -16,12 +16,11 @@ HyperLeiden::HyperLeiden(const Hypergraph &hGraph, int numberOfIterations, doubl
 
 void HyperLeiden::run() {
 
-    int maxPasses = 0;
     bool isFirst = true;
     Hypergraph currentG;
     mappings.clear();
 
-    for (int pass = 0; pass < maxPasses; pass++) {
+    for (int pass = 0; pass < numberOfIterations; pass++) {
 
         if (isFirst) {
             // Initialize memberships + sizes
@@ -50,6 +49,9 @@ void HyperLeiden::run() {
 
             // Aggregate hypergraph
             currentG = aggregateHypergraph(*G, communityMemberships, communitySizes);
+
+            // Create mapping
+            mappings.push_back(createMapping(communityMemberships, communitySizes));
         } else {
             // Initialize memberships + sizes
             std::vector<count> communityMemberships(currentG.upperNodeIdBound(), 0);
@@ -85,6 +87,8 @@ void HyperLeiden::run() {
 
     // TODO: unroll mappings to get final community memberships
     flattenPartition();
+
+    hasRun = true;
 }
 
 void HyperLeiden::greedyMovePhase(const Hypergraph &graph, std::vector<count> &communityMemberships,

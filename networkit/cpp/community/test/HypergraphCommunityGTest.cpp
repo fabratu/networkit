@@ -9,17 +9,46 @@
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 
-#include <networkit/community/Modularity.hpp>
+#include <networkit/community/HyperLeiden.hpp>
 #include <networkit/community/HypergraphLeiden.hpp>
 #include <networkit/community/HypergraphLouvain.hpp>
+#include <networkit/community/Modularity.hpp>
+#include <networkit/io/HMETISGraphReader.hpp>
 
 namespace NetworKit {
 
-class HypergraphCommunityGTest : public testing::Test {};
+class HypergraphCommunityGTest : public testing::Test {
 
-TEST_F(HypergraphCommunityGTest, testLeiden) {
-    // Hypergraph creation : 
-    bool weighted = true; 
+public:
+    Hypergraph readHypergraphFromFile(std::string const &fileName) {
+        bool firstline = true;
+        NetworKit::Hypergraph hypergraph(0, 0, true); // Initialize an empty hypergraph
+        std::ifstream file;
+        file.open(fileName);
+        if (file.is_open()) {
+            std::string line;
+            while (std::getline(file, line)) {
+                if (firstline) {
+                    hypergraph.addNodes(std::stoi(line));
+                    firstline = false;
+                } else {
+                    std::stringstream ss(line);
+                    NetworKit::node node;
+                    std::vector<NetworKit::node> nodes;
+                    while (ss >> node) {
+                        nodes.push_back(node);
+                    }
+                    hypergraph.addEdge(nodes);
+                }
+            }
+        }
+        return hypergraph;
+    }
+};
+
+TEST_F(HypergraphCommunityGTest, testHypergraphLeiden) {
+    // Hypergraph creation :
+    bool weighted = true;
     Hypergraph hg(6, 0, weighted);
     std::vector<node> edge1 = {0, 1, 2};
     edgeid newEdge = hg.addEdge(edge1, true);
@@ -42,7 +71,6 @@ TEST_F(HypergraphCommunityGTest, testLeiden) {
     std::vector<node> edge7 = {3, 4, 5};
     newEdge = hg.addEdge(edge7, true);
     hg.setEdgeWeight(newEdge, 1.5);
-
 
     Partition q(hg.numberOfNodes());
     q.allToSingletons();
@@ -64,17 +92,17 @@ TEST_F(HypergraphCommunityGTest, testLeiden) {
     Partition zeta = pl.getPartition();
     double mod_zeta = modularityHypergraph.getQualityHypergraph(zeta, hg, 1);
 
-    ASSERT_TRUE(zeta[0]==2);
-    ASSERT_TRUE(zeta[1]==2);
-    ASSERT_TRUE(zeta[2]==2);
-    ASSERT_TRUE(zeta[3]==5);
-    ASSERT_TRUE(zeta[4]==5);
-    ASSERT_TRUE(zeta[5]==5);
+    ASSERT_TRUE(zeta[0] == 2);
+    ASSERT_TRUE(zeta[1] == 2);
+    ASSERT_TRUE(zeta[2] == 2);
+    ASSERT_TRUE(zeta[3] == 5);
+    ASSERT_TRUE(zeta[4] == 5);
+    ASSERT_TRUE(zeta[5] == 5);
 }
 
-TEST_F(HypergraphCommunityGTest, testLouvain) {
-    // Hypergraph creation : 
-    bool weighted = true; 
+TEST_F(HypergraphCommunityGTest, testHypergraphLouvain) {
+    // Hypergraph creation :
+    bool weighted = true;
     Hypergraph hg(6, 0, weighted);
     std::vector<node> edge1 = {0, 1, 2};
     edgeid newEdge = hg.addEdge(edge1, true);
@@ -98,7 +126,6 @@ TEST_F(HypergraphCommunityGTest, testLouvain) {
     newEdge = hg.addEdge(edge7, true);
     hg.setEdgeWeight(newEdge, 1.5);
 
-
     Partition q(hg.numberOfNodes());
     q.allToSingletons();
     q.mergeSubsets(q[0], q[2]);
@@ -118,17 +145,17 @@ TEST_F(HypergraphCommunityGTest, testLouvain) {
     plouvain.run();
     Partition zeta_bis = plouvain.getPartition();
 
-    ASSERT_TRUE(zeta_bis[0]==2);
-    ASSERT_TRUE(zeta_bis[1]==2);
-    ASSERT_TRUE(zeta_bis[2]==2);
-    ASSERT_TRUE(zeta_bis[3]==5);
-    ASSERT_TRUE(zeta_bis[4]==5);
-    ASSERT_TRUE(zeta_bis[5]==5);
+    ASSERT_TRUE(zeta_bis[0] == 2);
+    ASSERT_TRUE(zeta_bis[1] == 2);
+    ASSERT_TRUE(zeta_bis[2] == 2);
+    ASSERT_TRUE(zeta_bis[3] == 5);
+    ASSERT_TRUE(zeta_bis[4] == 5);
+    ASSERT_TRUE(zeta_bis[5] == 5);
 }
 
-TEST_F(HypergraphCommunityGTest, testModularity) {
-    // Hypergraph creation : 
-    bool weighted = true; 
+TEST_F(HypergraphCommunityGTest, testHypergraphModularity) {
+    // Hypergraph creation :
+    bool weighted = true;
     Hypergraph hg(5, 3, weighted);
     std::vector<node> edge1 = {0, 1, 2};
     edgeid newEdge = hg.addEdge(edge1, true);
@@ -149,37 +176,40 @@ TEST_F(HypergraphCommunityGTest, testModularity) {
 
     // Test modularity value for strict edge contribution
     Modularity modularityHypergraph;
-    double mod_0 = modularityHypergraph.getQualityHypergraph(p, hg,1.0,0);
+    double mod_0 = modularityHypergraph.getQualityHypergraph(p, hg, 1.0, 0);
     DEBUG("modularity: ", mod_0);
     ASSERT_TRUE(mod_0 == 0.9 - 2065805. / 2284880.0);
 
     // Test modularity value for majority edge contribution
-    double mod_1 = modularityHypergraph.getQualityHypergraph(p, hg, 1.0,1);
+    double mod_1 = modularityHypergraph.getQualityHypergraph(p, hg, 1.0, 1);
     DEBUG("modularity: ", mod_1);
-    ASSERT_TRUE(mod_1 == 1- 2198505.0/2284880.0);
+    ASSERT_TRUE(mod_1 == 1 - 2198505.0 / 2284880.0);
 
     // Test modularity value for strict edge contribution / partially weighted
-    double mod_10 = modularityHypergraph.getQualityHypergraph(p, hg,1.0,10);
+    double mod_10 = modularityHypergraph.getQualityHypergraph(p, hg, 1.0, 10);
     DEBUG("modularity: ", mod_10);
-    EXPECT_LE(mod_10 - 0.0000000000000001, 0.9 - 4889.0 / 6561.0); //C++ double should have a floating-point precision of up to 15 digits
+    EXPECT_LE(
+        mod_10 - 0.0000000000000001,
+        0.9
+            - 4889.0
+                  / 6561.0); // C++ double should have a floating-point precision of up to 15 digits
     EXPECT_GE(mod_10 + 0.0000000000000001, 0.9 - 4889.0 / 6561.0);
 
     // Test modularity value for majority edge contribution / partially weighted
-    double mod_11 = modularityHypergraph.getQualityHypergraph(p, hg, 1.0,11);
+    double mod_11 = modularityHypergraph.getQualityHypergraph(p, hg, 1.0, 11);
     DEBUG("modularity: ", mod_11);
-    ASSERT_TRUE(mod_11 == 1- 9791.0 /10935.0);
+    ASSERT_TRUE(mod_11 == 1 - 9791.0 / 10935.0);
 
-
-    //Testing the value of the modularity gain from moving nodes 0 and 2 into the community of 3
-    // For strict edge contribution
-    std::set<node> S({0,2});
+    // Testing the value of the modularity gain from moving nodes 0 and 2 into the community of 3
+    //  For strict edge contribution
+    std::set<node> S({0, 2});
     double gain_0 = modularityHypergraph.deltaModularityHypergraph(p, hg, S, p[3], 1.0, 0);
     DEBUG("modularity gain: ", gain_0);
     ASSERT_TRUE(gain_0 == -0.4 + 30093.0 / 57122.0);
     // For majority edge contribution
     double gain_1 = modularityHypergraph.deltaModularityHypergraph(p, hg, S, p[3], 1.0, 1);
     DEBUG("modularity gain: ", gain_1);
-    ASSERT_TRUE(gain_1 ==0 +13825.0 /57122.0);
+    ASSERT_TRUE(gain_1 == 0 + 13825.0 / 57122.0);
 
     // For strict edge contribution / partially weighted
     double gain_10 = modularityHypergraph.deltaModularityHypergraph(p, hg, S, p[3], 1.0, 10);
@@ -188,8 +218,7 @@ TEST_F(HypergraphCommunityGTest, testModularity) {
     double gain_11 = modularityHypergraph.deltaModularityHypergraph(p, hg, S, p[3], 1.0, 11);
     DEBUG("modularity gain: ", gain_11);
 
-
-    //check the value of gain
+    // check the value of gain
     Partition q(hg.numberOfNodes());
     q.allToSingletons();
     q.mergeSubsets(q[0], q[3]);
@@ -200,10 +229,49 @@ TEST_F(HypergraphCommunityGTest, testModularity) {
     double mod_prime_0 = modularityHypergraph.getQualityHypergraph(q, hg, 1.0, 0);
     ASSERT_TRUE(mod_prime_0 == mod_0 + gain_0);
     double mod_prime_11 = modularityHypergraph.getQualityHypergraph(q, hg, 1.0, 11);
-    EXPECT_LE(mod_prime_11 - 0.0000000000000001, mod_11 + gain_11); //C++ double should have a floating-point precision of up to 15 digits
+    EXPECT_LE(
+        mod_prime_11 - 0.0000000000000001,
+        mod_11 + gain_11); // C++ double should have a floating-point precision of up to 15 digits
     EXPECT_GE(mod_prime_11 + 0.0000000000000001, mod_11 + gain_11);
     double mod_prime_10 = modularityHypergraph.getQualityHypergraph(q, hg, 1.0, 10);
-    EXPECT_LE(mod_prime_10 - 0.0000000000000001, mod_10 + gain_10); //C++ double should have a floating-point precision of up to 15 digits
+    EXPECT_LE(
+        mod_prime_10 - 0.0000000000000001,
+        mod_10 + gain_10); // C++ double should have a floating-point precision of up to 15 digits
     EXPECT_GE(mod_prime_10 + 0.0000000000000001, mod_10 + gain_10);
 }
+
+TEST_F(HypergraphCommunityGTest, testHypergraphFromFile) {
+    std::string path = "input/ndc-classes.hypergraph";
+
+    Hypergraph hg = readHypergraphFromFile(path);
+
+    ASSERT_EQ(hg.numberOfNodes(), 1161);
+    ASSERT_EQ(hg.numberOfEdges(), 49726);
 }
+
+TEST_F(HypergraphCommunityGTest, testHMETISReader) {
+    // Test HyperLeiden on a hypergraph read from a file
+    std::string path = "input/ibm01.hypergraph";
+
+    HMETISGraphReader hmetisReader;
+
+    Hypergraph hg = hmetisReader.read(path);
+    ASSERT_EQ(hg.numberOfNodes(), 14111);
+    ASSERT_EQ(hg.numberOfEdges(), 14111);
+}
+
+TEST_F(HypergraphCommunityGTest, testHyperLeidenFromFile) {
+    // Test HyperLeiden on a hypergraph read from a file
+    std::string path = "input/ndc-classes.hypergraph";
+
+    Hypergraph hg = readHypergraphFromFile(path);
+
+    HyperLeiden pl(hg, 2);
+    pl.run();
+    Partition zeta = pl.getPartition();
+
+    // Check if the partition has been created correctly
+    ASSERT_EQ(zeta.numberOfSubsets(), 3); // Adjust based on your test file
+}
+
+} // namespace NetworKit
