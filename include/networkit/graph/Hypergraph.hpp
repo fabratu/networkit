@@ -361,7 +361,7 @@ public:
      * Returns the (weighted) degree of a node.
      *
      * @param u The node id.
-     * @return count Weighted degree of node.
+     * @return edgeweight Weighted degree of node.
      */
     edgeweight weightedDegree(node u) const;
 
@@ -581,6 +581,17 @@ public:
     void forEdges(L handle) const;
 
     /**
+     * Iterate over all incident edges of a node and call @a handle (lamdba
+     * closure).
+     *
+     * @param u Node.
+     * @param handle Takes parameters <code>(edgeid)</code> or
+     * <code>(edgeid, edgeweight)</code>.
+     */
+    template <typename L>
+    void forEdgesOf(node u, L handle) const;
+
+    /**
      * Iterate in parallel over all edges of the const graph and call @a
      * handle (lambda closure).
      *
@@ -607,6 +618,16 @@ public:
      */
     template <bool hasWeights, typename L>
     inline void forEdgeImpl(L handle) const;
+
+    /**
+     * @brief Implementation of the for loop for all edges of @u, @see forEdgesOf
+     *
+     * @param u The node id for which the edges shall be iterated
+     * @param handle The handle that shall be executed for all edges of @u
+     * @return void
+     */
+    template <bool hasWeights, typename L>
+    inline void forEdgesOfImpl(node u, L handle) const;
 
     /**
      * @brief Implementation of the parallel for loop for all edges, @see parallelForEdges
@@ -697,6 +718,13 @@ inline void Hypergraph::forEdgeImpl(L handle) const {
 }
 
 template <bool hasWeights, typename L>
+inline void Hypergraph::forEdgesOfImpl(node u, L handle) const {
+    for (auto eId : nodeIncidence[u]) {
+        edgeLambda<L>(handle, eId, edgeWeightIteratorHelper<hasWeights>(eId));
+    }
+}
+
+template <bool hasWeights, typename L>
 inline void Hypergraph::parallelForEdgesImpl(L handle) const {
 #pragma omp parallel for schedule(guided)
     for (omp_index eId = 0; eId < static_cast<omp_index>(nextEdgeId); ++eId) {
@@ -715,6 +743,19 @@ void Hypergraph::forEdges(L handle) const {
 
     case 1: // weighted
         forEdgeImpl<true, L>(handle);
+        break;
+    }
+}
+
+template <typename L>
+void Hypergraph::forEdgesOf(node u, L handle) const {
+    switch (static_cast<count>(weighted)) {
+    case 0: // unweighted
+        forEdgesOfImpl<false, L>(u, handle);
+        break;
+
+    case 1: // weighted
+        forEdgesOfImpl<true, L>(u, handle);
         break;
     }
 }

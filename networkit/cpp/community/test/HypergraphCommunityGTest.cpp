@@ -9,6 +9,7 @@
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 
+#include <networkit/auxiliary/Log.hpp>
 #include <networkit/community/HyperLeiden.hpp>
 #include <networkit/community/HypergraphLeiden.hpp>
 #include <networkit/community/HypergraphLouvain.hpp>
@@ -261,11 +262,15 @@ TEST_F(HypergraphCommunityGTest, testHMETISReader) {
 }
 
 TEST_F(HypergraphCommunityGTest, testHyperLeidenFromFile) {
+
     // Test HyperLeiden on a hypergraph read from a file
-    std::string path = "input/ndc-classes.hypergraph";
+    std::string path = "input/ibm01.hypergraph";
 
-    Hypergraph hg = readHypergraphFromFile(path);
+    HMETISGraphReader hmetisReader;
 
+    Hypergraph hg = hmetisReader.read(path);
+
+    Aux::Log::setLogLevel("INFO");
     HyperLeiden pl(hg, 2);
     pl.run();
     Partition zeta = pl.getPartition();

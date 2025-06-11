@@ -5,14 +5,16 @@
  *     Author: Fabian Brandt-Tumescheit
  */
 
+#include <networkit/auxiliary/Log.hpp>
 #include <networkit/community/HyperLeiden.hpp>
 
 namespace NetworKit {
 HyperLeiden::HyperLeiden(const Hypergraph &hGraph, int numberOfIterations, double gamma,
-                         RefinementStrategy refinementStrategy,
+                         double tolerance, RefinementStrategy refinementStrategy,
                          CoarseningStrategy coarseningStrategy)
     : CommunityDetectionAlgorithm(hGraph), numberOfIterations(numberOfIterations), gamma(gamma),
-      refinementStrategy(refinementStrategy), coarseningStrategy(coarseningStrategy){};
+      tolerance(tolerance), refinementStrategy(refinementStrategy),
+      coarseningStrategy(coarseningStrategy){};
 
 void HyperLeiden::run() {
 
@@ -28,14 +30,24 @@ void HyperLeiden::run() {
             std::vector<count> communitySizes(G->upperNodeIdBound(), 0);
             std::vector<Aux::ParallelHashMap> edgeCommunityMemberships(G->upperEdgeIdBound());
             std::vector<Aux::ParallelHashMap> edgeCommunityVolumes(G->upperEdgeIdBound());
+            auto start = std::chrono::high_resolution_clock::now();
             initializeMemberships(*G, communityMemberships, communitySizes,
                                   edgeCommunityMemberships, edgeCommunityVolumes);
-
+            auto end = std::chrono::high_resolution_clock::now();
+            double duration =
+                std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count() / 1000.0;
+            INFO("Initialization time: ", duration, " seconds");
             // Greedy Move Phase
+            start = std::chrono::high_resolution_clock::now();
             greedyMovePhase(*G, communityMemberships, communitySizes, edgeCommunityMemberships,
                             edgeCommunityVolumes);
+            end = std::chrono::high_resolution_clock::now();
+            duration =
+                std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count() / 1000.0;
+            INFO("Greedy move phase time: ", duration, " seconds");
 
             // Refine disconnected communities
+            start = std::chrono::high_resolution_clock::now();
             if (refinementStrategy == RefinementStrategy::DISCONNECTED) {
                 std::vector<count> tmpCommunityMemberships(G->upperNodeIdBound(), 0);
                 std::vector<count> tmpCommunitySizes(G->upperNodeIdBound(), 0);
@@ -46,12 +58,21 @@ void HyperLeiden::run() {
                                    tmpEdgeCommunityMemberships, tmpEdgeCommunityVolumes,
                                    communityMemberships);
             }
-
+            end = std::chrono::high_resolution_clock::now();
+            duration =
+                std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count() / 1000.0;
+            INFO("Refinement time: ", duration, " seconds");
             // Aggregate hypergraph
+            start = std::chrono::high_resolution_clock::now();
             currentG = aggregateHypergraph(*G, communityMemberships, communitySizes);
-
+            end = std::chrono::high_resolution_clock::now();
+            duration =
+                std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count() / 1000.0;
+            INFO("Aggregation time: ", duration, " seconds");
             // Create mapping
             mappings.push_back(createMapping(communityMemberships, communitySizes));
+
+            isFirst = false;
         } else {
             // Initialize memberships + sizes
             std::vector<count> communityMemberships(currentG.upperNodeIdBound(), 0);
@@ -97,28 +118,38 @@ void HyperLeiden::greedyMovePhase(const Hypergraph &graph, std::vector<count> &c
                                   std::vector<Aux::ParallelHashMap> &edgeCommunityVolumes) {
 
     count maxIter = 100;
+    count rho_total = graph.edgeVolume();
 
     std::vector<bool> vaff(graph.numberOfNodes(), true);
     double gainPerRound = 0.0;
 
     for (count l = 0; l < maxIter; l++) {
-        double gainPerRound = 0.0;
+        auto start = std::chrono::high_resolution_clock::now();
+        gainPerRound = 0.0;
         graph.parallelForNodes([&](node u) {
             if (!vaff[u])
                 return;
             vaff[u] = false;
             auto [bestCommunity, gain] =
-                getBestCommunity(graph, u, communityMemberships, communitySizes,
+                getBestCommunity(graph, u, rho_total, communityMemberships, communitySizes,
                                  edgeCommunityMemberships, edgeCommunityVolumes);
+
             if (bestCommunity != communityMemberships[u]) {
                 updateMemberships(graph, u, bestCommunity, communityMemberships, communitySizes,
                                   edgeCommunityMemberships, edgeCommunityVolumes);
+
                 graph.forNeighborsOf(u, [&](node w) { vaff[w] = true; });
+
 #pragma omp atomic
                 gainPerRound += gain;
             }
         });
 
+        auto end = std::chrono::high_resolution_clock::now();
+        double duration =
+            std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count() / 1000.0;
+        INFO("Greedy move phase time for round ", l, ": ", duration, " seconds");
+        INFO("Gain in round ", l, ": ", gainPerRound);
         if (gainPerRound < tolerance) {
             break;
         }
@@ -133,6 +164,7 @@ void HyperLeiden::refineDisconnected(const Hypergraph &graph,
                                      std::vector<count> &referenceCommunityMemberships) {
 
     count maxIter = 100;
+    count rho_total = graph.edgeVolume();
 
     std::vector<bool> vaff(graph.numberOfNodes(), true);
     for (count l = 0; l < maxIter; l++) {
@@ -142,9 +174,14 @@ void HyperLeiden::refineDisconnected(const Hypergraph &graph,
             if (communitySizes[communityMemberships[u]] != 1) // Only perform for isolated nodes
                 return;
             vaff[u] = false;
+            auto start = std::chrono::high_resolution_clock::now();
             auto [bestCommunity, gain] = getBestCommunity(
-                graph, u, communityMemberships, communitySizes, edgeCommunityMemberships,
+                graph, u, rho_total, communityMemberships, communitySizes, edgeCommunityMemberships,
                 edgeCommunityVolumes, referenceCommunityMemberships);
+            auto end = std::chrono::high_resolution_clock::now();
+            double duration =
+                std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count() / 1000.0;
+            INFO("get best community time for node ", u, ": ", duration, " seconds");
             if (bestCommunity != communityMemberships[u]) {
                 if (updateMemberships<true>(graph, u, bestCommunity, communityMemberships,
                                             communitySizes, edgeCommunityMemberships,
@@ -187,7 +224,7 @@ Hypergraph HyperLeiden::aggregateHypergraph(const Hypergraph &graph,
     graph.forEdges([&](edgeid eId) {
         auto nodes = graph.nodesOf(eId);
         bool isSingletonEdge = true;
-        if (graph.degree(eId) == 0) {
+        if (graph.order(eId) == 0) {
             return; // Skip empty edges
         }
         count indicatorCommunity = nodes.begin()->first; // Get the first node's community id
@@ -253,6 +290,7 @@ void HyperLeiden::initializeMemberships(
     });
 }
 
+// TODO: Maybe doing this directly is more efficient than saving the infos in communities variable
 std::unordered_map<count, count>
 HyperLeiden::gatherNeighboringCommunities(const Hypergraph &graph, node v,
                                           const std::vector<count> &communityMemberships,
@@ -267,50 +305,94 @@ HyperLeiden::gatherNeighboringCommunities(const Hypergraph &graph, node v,
 };
 
 std::pair<count, double>
-HyperLeiden::getBestCommunity(const Hypergraph &graph, node v,
+HyperLeiden::getBestCommunity(const Hypergraph &graph, node v, count rho_total,
                               const std::vector<count> &communityMemberships,
                               const std::vector<count> &communitySizes,
-                              const std::vector<Aux::ParallelHashMap> &edgeCommunityMemberships,
-                              const std::vector<Aux::ParallelHashMap> &edgeCommunityVolumes,
+                              std::vector<Aux::ParallelHashMap> &edgeCommunityMemberships,
+                              std::vector<Aux::ParallelHashMap> &edgeCommunityVolumes,
                               const std::vector<count> &referenceCommunityMemberships) const {
-    auto [oldCommunity, oldSize] =
-        std::make_pair(communityMemberships[v], communitySizes[communityMemberships[v]]);
-    auto [bestCommunity, bestGain] = std::make_pair(0, 0.0);
-    auto neighboringCommunities =
-        gatherNeighboringCommunities(graph, v, communityMemberships, communitySizes);
-
-    for (const auto &[c, size] : neighboringCommunities) {
-        double gain = deltaHCPM(graph, v, oldCommunity, c, oldSize, size, communityMemberships,
-                                communitySizes, edgeCommunityMemberships, edgeCommunityVolumes);
-        if (gain > bestGain) {
-            bestGain = gain;
-            bestCommunity = c;
+    // auto [oldCommunity, oldSize] =
+    //     std::make_pair(communityMemberships[v], communitySizes[communityMemberships[v]]);
+    auto oldCommunity = communityMemberships[v];
+    auto oldSize = communitySizes[oldCommunity];
+    auto bestCommunity = oldCommunity;
+    auto bestGain = std::numeric_limits<double>::lowest();
+    // auto [bestCommunity, bestGain] = std::make_pair(0, 0.0);
+    // auto neighboringCommunities =
+    //     gatherNeighboringCommunities(graph, v, communityMemberships, communitySizes);
+    // for (const auto &[c, size] : neighboringCommunities) {
+    //     double gain = deltaHCPM(graph, v, oldCommunity, c, oldSize, size, communityMemberships,
+    //                             communitySizes, edgeCommunityMemberships, edgeCommunityVolumes);
+    //     if (gain > bestGain) {
+    //         bestGain = gain;
+    //         bestCommunity = c;
+    //     }
+    // }
+    // Measures to be faster doing this directly
+    graph.forNeighborsOf(v, [&](node w) {
+        if (communityMemberships[v] != communityMemberships[w]) {
+            double gain =
+                deltaHCPM(graph, v, rho_total, oldCommunity, communityMemberships[w], oldSize,
+                          communitySizes[communityMemberships[w]], communityMemberships,
+                          communitySizes, edgeCommunityMemberships, edgeCommunityVolumes);
+            if (gain > bestGain) {
+                bestGain = gain;
+                bestCommunity = communityMemberships[w];
+            }
         }
-    }
+    });
+
     // TODO: maybe default gain not 0.0
     return {bestCommunity, bestGain};
 }
 
-double HyperLeiden::deltaHCPM(const Hypergraph &graph, node v, count c1, count c2, count c1Size,
-                              count c2Size, const std::vector<count> &communityMemberships,
+double HyperLeiden::deltaHCPM(const Hypergraph &graph, node v, count rho_total, count c1, count c2,
+                              count c1Size, count c2Size,
+                              const std::vector<count> &communityMemberships,
                               const std::vector<count> &communitySizes,
-                              const std::vector<Aux::ParallelHashMap> &edgeCommunityMemberships,
-                              const std::vector<Aux::ParallelHashMap> &edgeCommunityVolumes) const {
+                              std::vector<Aux::ParallelHashMap> &edgeCommunityMemberships,
+                              std::vector<Aux::ParallelHashMap> &edgeCommunityVolumes) const {
     double delta_n = 0.0;
     double delta_e = 0.0;
-    count rho_total = graph.edgeVolume();
+    count iFactor = 0.0;
+    count jFactor = 0.0;
+    count c1eSize = 0.0;
+    count c2eSize = 0.0;
 
     if (c1 != c2) {
-        double delta_n = gamma * rho_total * ((2 << c2Size) - (2 << (c1Size - 1)));
-        graph.forEdges([&](edgeid eId, edgeweight eWeight) {
+        // delta_n dominates delta_e? Certainly if rho_total >> eWeight
+        // If so, we can use this information to speed up the computation
+        // delta_n = gamma * rho_total * ((1 << c2Size) - (1 << (c1Size - 1)));
+        delta_n = gamma * ((1 << c2Size) - (1 << (c1Size - 1)));
+        // For edges of should be faster, current code takes 66 seconds for 1 greedy move iteration
+        // graph.forEdges(
+        graph.forEdgesOf(v, [&](edgeid eId, edgeweight eWeight) {
             if (graph.hasNode(v, eId)) {
                 nodeweight nWeight = graph.getNodeWeightOf(v, eId);
-                // TODO: use handles
-                count jFactor = edgeCommunityVolumes[eId].currentTable()->find(c2) + 2 * nWeight;
-                count iFactor = edgeCommunityVolumes[eId].currentTable()->find(c1) + nWeight;
-                count c2eSize = edgeCommunityMemberships[eId].currentTable()->find(c2);
-                count c1eSize = edgeCommunityMemberships[eId].currentTable()->find(c1);
-                delta_e += eWeight * ((2 << c2eSize) * jFactor - (2 << (c1eSize - 1)) * iFactor);
+
+                auto handleMemberships = edgeCommunityMemberships[eId].makeHandle();
+                auto handleVolumes = edgeCommunityVolumes[eId].makeHandle();
+
+                jFactor = handleVolumes->find(c2) + 2 * nWeight;
+                iFactor = handleVolumes->find(c1) + nWeight;
+                handleVolumes->find(c2) == Aux::ParallelHashMap::ht_invalid_value
+                    ? jFactor = 2 *nWeight
+                    : jFactor = handleVolumes->find(c2) + 2 * nWeight;
+                handleVolumes->find(c1) == Aux::ParallelHashMap::ht_invalid_value
+                    ? iFactor = nWeight
+                    : iFactor = handleVolumes->find(c1) + nWeight;
+                handleMemberships->find(c2) == Aux::ParallelHashMap::ht_invalid_value
+                    ? c2eSize = 0
+                    : c2eSize = handleMemberships->find(c2);
+                // c1 should be present in the edge. Otherwise v could not be part of it
+                handleMemberships->find(c1) == Aux::ParallelHashMap::ht_invalid_value
+                    ? c1eSize = 0
+                    : c1eSize = handleMemberships->find(c1);
+                // c2eSize = handleMemberships->find(c2);
+                // c1eSize = handleMemberships->find(c1);
+
+                // This formula looks fishy ... why c1esize - 1?
+                delta_e += eWeight * ((1 << c2eSize) * jFactor - (1 << (c1eSize - 1)) * iFactor);
             }
         });
     }

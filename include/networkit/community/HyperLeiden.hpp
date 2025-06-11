@@ -47,6 +47,7 @@ public:
      * @param coarseningStrategy Set strategy for coarsening
      */
     HyperLeiden(const Hypergraph &hGraph, int numberOfIterations = 3, double gamma = 1,
+                double tolerance = 1e-4,
                 RefinementStrategy refinementStrategy = RefinementStrategy::DISCONNECTED,
                 CoarseningStrategy coarseningStrategy = CoarseningStrategy::STANDARD);
 
@@ -87,19 +88,19 @@ private:
 
     // maps to "leidenChooseBestCommunity" in GVE-Leiden
     std::pair<count, double>
-    getBestCommunity(const Hypergraph &graph, node v,
+    getBestCommunity(const Hypergraph &graph, node v, count rho_total,
                      const std::vector<count> &communityMemberships,
                      const std::vector<count> &communitySizes,
-                     const std::vector<Aux::ParallelHashMap> &edgeCommunityMemberships,
-                     const std::vector<Aux::ParallelHashMap> &edgeCommunityVolumes,
+                     std::vector<Aux::ParallelHashMap> &edgeCommunityMemberships,
+                     std::vector<Aux::ParallelHashMap> &edgeCommunityVolumes,
                      const std::vector<count> &referenceCommunityMemberships = {}) const;
 
     // maps to "deltaModularity" in GVE-Leiden
-    double deltaHCPM(const Hypergraph &graph, node v, count c1, count c2, count c1Size,
-                     count c2Size, const std::vector<count> &communityMemberships,
+    double deltaHCPM(const Hypergraph &graph, node v, count rho_total, count c1, count c2,
+                     count c1Size, count c2Size, const std::vector<count> &communityMemberships,
                      const std::vector<count> &communitySizes,
-                     const std::vector<Aux::ParallelHashMap> &edgeCommunityMemberships,
-                     const std::vector<Aux::ParallelHashMap> &edgeCommunityVolumes) const;
+                     std::vector<Aux::ParallelHashMap> &edgeCommunityMemberships,
+                     std::vector<Aux::ParallelHashMap> &edgeCommunityVolumes) const;
 
     // maps to "leidenRenumberCommunitiesW" in GVE-Leiden
     void renumberCommunities(std::vector<count> &communityMemberships,
@@ -175,8 +176,8 @@ private:
     void flattenPartition();
 
     // Hyperparameter
-    double gamma;              // Resolution parameter
-    double tolerance = 0.0001; // Tolerance for the greedy move phase
+    double gamma;     // Resolution parameter
+    double tolerance; // Tolerance for the greedy move phase
     int numberOfIterations;
     RefinementStrategy refinementStrategy;
     CoarseningStrategy coarseningStrategy;
