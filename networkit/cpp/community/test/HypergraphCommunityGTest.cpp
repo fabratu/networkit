@@ -263,15 +263,44 @@ TEST_F(HypergraphCommunityGTest, testHMETISReader) {
 
 TEST_F(HypergraphCommunityGTest, testHyperLeidenFromFile) {
 
+    Aux::setNumberOfThreads(1); // Set number of threads to 1 for reproducibility
     // Test HyperLeiden on a hypergraph read from a file
-    std::string path = "input/ibm01.hypergraph";
+    // std::string path = "input/ibm01.hypergraph";
+    // std::string path = "input/3000_he.hypergraph";
+    // HMETISGraphReader hmetisReader;
 
-    HMETISGraphReader hmetisReader;
+    // Hypergraph hg = hmetisReader.read(path);
 
-    Hypergraph hg = hmetisReader.read(path);
+    Hypergraph hg2 = Hypergraph(15, 0, true);
+    // e_0
+    hg2.addEdge({0, 1}, true);
+    // e_1
+    hg2.addEdge({0, 1, 2}, true);
+    // e_2
+    hg2.addEdge({4, 5}, true);
+    // e_3
+    hg2.addEdge({1, 2, 3, 4}, true);
+    // e_4
+    hg2.addEdge({5, 6, 7}, true);
+    // e_5
+    hg2.addEdge({6, 7, 8, 9}, true);
+    // e_6
+    hg2.addEdge({6, 9, 10, 11}, true);
+    // e_7
+    hg2.addEdge({10, 11}, true);
+    // e_8
+    hg2.addEdge({11, 12}, true);
+    // e_9
+    hg2.addEdge({12, 13, 14}, true);
+    // e_10
+    hg2.addEdge({3, 12, 13}, true);
+    // e_11
+    hg2.addEdge({2, 3}, true);
+    // e_12
+    hg2.addEdge({0, 8}, true);
 
     Aux::Log::setLogLevel("INFO");
-    HyperLeiden pl(hg, 2);
+    HyperLeiden pl(hg2, 2, 0.4);
     pl.run();
     Partition zeta = pl.getPartition();
 

@@ -7,6 +7,8 @@
 
 #include <networkit/auxiliary/Log.hpp>
 #include <networkit/community/HyperLeiden.hpp>
+#include <networkit/community/Modularity.hpp>
+#include <networkit/structures/Partition.hpp>
 
 namespace NetworKit {
 HyperLeiden::HyperLeiden(const Hypergraph &hGraph, int numberOfIterations, double gamma,
@@ -46,6 +48,15 @@ void HyperLeiden::run() {
                 std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count() / 1000.0;
             INFO("Greedy move phase time: ", duration, " seconds");
 
+            result.reset(G->upperNodeIdBound(), 0);
+            result.setUpperBound(G->upperNodeIdBound());
+            // Partition zeta(communityMemberships.size());
+            // zeta.allToSingletons();
+            G->parallelForNodes([&](node u) { result[u] = communityMemberships[u]; });
+            Modularity mod;
+            double quality = mod.getQualityHypergraph(result, *G);
+            INFO("Modularity quality of initial partition: ", quality);
+
             // Refine disconnected communities
             start = std::chrono::high_resolution_clock::now();
             if (refinementStrategy == RefinementStrategy::DISCONNECTED) {
@@ -54,14 +65,25 @@ void HyperLeiden::run() {
                 std::vector<Aux::ParallelHashMap> tmpEdgeCommunityMemberships(
                     G->upperEdgeIdBound());
                 std::vector<Aux::ParallelHashMap> tmpEdgeCommunityVolumes(G->upperEdgeIdBound());
-                refineDisconnected(*G, tmpCommunityMemberships, tmpCommunityMemberships,
+                refineDisconnected(*G, tmpCommunityMemberships, tmpCommunitySizes,
                                    tmpEdgeCommunityMemberships, tmpEdgeCommunityVolumes,
                                    communityMemberships);
             }
+
             end = std::chrono::high_resolution_clock::now();
             duration =
                 std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count() / 1000.0;
             INFO("Refinement time: ", duration, " seconds");
+            result.reset(G->upperNodeIdBound(), 0);
+            result.setUpperBound(G->upperNodeIdBound());
+            // Partition zeta(communityMemberships.size());
+            // zeta.allToSingletons();
+            for (node u = 0; u < communityMemberships.size(); ++u) {
+                result.moveToSubset(communityMemberships[u], u);
+            }
+            quality = mod.getQualityHypergraph(result, *G);
+            INFO("Modularity quality of initial partition: ", quality);
+            exit(0);
             // Aggregate hypergraph
             start = std::chrono::high_resolution_clock::now();
             currentG = aggregateHypergraph(*G, communityMemberships, communitySizes);
@@ -121,7 +143,7 @@ void HyperLeiden::greedyMovePhase(const Hypergraph &graph, std::vector<count> &c
     count rho_total = graph.edgeVolume();
 
     std::vector<bool> vaff(graph.numberOfNodes(), true);
-    double gainPerRound = 0.0;
+    double gainPerRound = 0;
 
     for (count l = 0; l < maxIter; l++) {
         auto start = std::chrono::high_resolution_clock::now();
@@ -134,14 +156,25 @@ void HyperLeiden::greedyMovePhase(const Hypergraph &graph, std::vector<count> &c
                 getBestCommunity(graph, u, rho_total, communityMemberships, communitySizes,
                                  edgeCommunityMemberships, edgeCommunityVolumes);
 
-            if (bestCommunity != communityMemberships[u]) {
+            if (bestCommunity != communityMemberships[u] && gain > 0) {
+                INFO("Node ", u, " moves to community ", bestCommunity, " with gain ", gain,
+                     " in round ", l);
                 updateMemberships(graph, u, bestCommunity, communityMemberships, communitySizes,
                                   edgeCommunityMemberships, edgeCommunityVolumes);
 
                 graph.forNeighborsOf(u, [&](node w) { vaff[w] = true; });
 
+                // if (gain > 100000) {
+                //     int64_t tempGain = gain;
+                //     count tempBestCommunity = bestCommunity;
+                //     INFO("Node ", u, " moved to community ", bestCommunity, " with gain ", gain,
+                //          " in round ", l);
+                //     exit(1);
+                //     l = 100;
+                // }
 #pragma omp atomic
                 gainPerRound += gain;
+                // INFO("Node ", u, " moved to community ", bestCommunity, " with gain ", gain);
             }
         });
 
@@ -298,12 +331,15 @@ HyperLeiden::gatherNeighboringCommunities(const Hypergraph &graph, node v,
     std::unordered_map<count, count> communities;
     graph.forNeighborsOf(v, [&](node w) {
         if (communityMemberships[v] != communityMemberships[w]) {
-            communities.insert({communityMemberships[w], communitySizes[communityMemberships[w]]});
+            communities[communityMemberships[w]] = communitySizes[communityMemberships[w]];
+            // communities.insert({communityMemberships[w],
+            // communitySizes[communityMemberships[w]]});
         }
     });
     return communities;
 };
 
+// TODO: We can make int64_t smaller
 std::pair<count, double>
 HyperLeiden::getBestCommunity(const Hypergraph &graph, node v, count rho_total,
                               const std::vector<count> &communityMemberships,
@@ -316,31 +352,44 @@ HyperLeiden::getBestCommunity(const Hypergraph &graph, node v, count rho_total,
     auto oldCommunity = communityMemberships[v];
     auto oldSize = communitySizes[oldCommunity];
     auto bestCommunity = oldCommunity;
-    auto bestGain = std::numeric_limits<double>::lowest();
+    double bestGain = std::numeric_limits<double>::lowest();
     // auto [bestCommunity, bestGain] = std::make_pair(0, 0.0);
-    // auto neighboringCommunities =
-    //     gatherNeighboringCommunities(graph, v, communityMemberships, communitySizes);
-    // for (const auto &[c, size] : neighboringCommunities) {
-    //     double gain = deltaHCPM(graph, v, oldCommunity, c, oldSize, size, communityMemberships,
-    //                             communitySizes, edgeCommunityMemberships, edgeCommunityVolumes);
-    //     if (gain > bestGain) {
-    //         bestGain = gain;
-    //         bestCommunity = c;
-    //     }
-    // }
-    // Measures to be faster doing this directly
-    graph.forNeighborsOf(v, [&](node w) {
-        if (communityMemberships[v] != communityMemberships[w]) {
-            double gain =
-                deltaHCPM(graph, v, rho_total, oldCommunity, communityMemberships[w], oldSize,
-                          communitySizes[communityMemberships[w]], communityMemberships,
-                          communitySizes, edgeCommunityMemberships, edgeCommunityVolumes);
-            if (gain > bestGain) {
-                bestGain = gain;
-                bestCommunity = communityMemberships[w];
-            }
+    auto neighboringCommunities =
+        gatherNeighboringCommunities(graph, v, communityMemberships, communitySizes);
+    INFO("Node ", v, " has ", neighboringCommunities.size(), " neighboring communities");
+    for (const auto &[c, size] : neighboringCommunities) {
+        INFO("Node ", v, " has neighboring community ", c, " with size ", size);
+    }
+    for (const auto &[c, size] : neighboringCommunities) {
+        // if (v == 3319 && c == 5739) {
+        //     INFO("Envoking deltaHCPM");
+        // }
+        double gain =
+            deltaHCPM(graph, v, rho_total, oldCommunity, c, oldSize, size, communityMemberships,
+                      communitySizes, edgeCommunityMemberships, edgeCommunityVolumes);
+        INFO("Node ", v, " gain for community ", c, ": ", gain);
+        if (gain > bestGain) {
+            bestGain = gain;
+            bestCommunity = c;
         }
-    });
+    }
+
+    // Measures to be faster doing this directly
+    // graph.forNeighborsOf(v, [&](node w) {
+    //     if (communityMemberships[v] != communityMemberships[w]) {
+    //         if (v == 3319 && communityMemberships[w] == 8128) {
+    //             INFO("Envoking deltaHCPM");
+    //         }
+    //         int64_t gain =
+    //             deltaHCPM(graph, v, rho_total, oldCommunity, communityMemberships[w], oldSize,
+    //                       communitySizes[communityMemberships[w]], communityMemberships,
+    //                       communitySizes, edgeCommunityMemberships, edgeCommunityVolumes);
+    //         if (gain > bestGain) {
+    //             bestGain = gain;
+    //             bestCommunity = communityMemberships[w];
+    //         }
+    //     }
+    // });
 
     // TODO: maybe default gain not 0.0
     return {bestCommunity, bestGain};
@@ -352,51 +401,111 @@ double HyperLeiden::deltaHCPM(const Hypergraph &graph, node v, count rho_total, 
                               const std::vector<count> &communitySizes,
                               std::vector<Aux::ParallelHashMap> &edgeCommunityMemberships,
                               std::vector<Aux::ParallelHashMap> &edgeCommunityVolumes) const {
-    double delta_n = 0.0;
-    double delta_e = 0.0;
-    count iFactor = 0.0;
-    count jFactor = 0.0;
-    count c1eSize = 0.0;
-    count c2eSize = 0.0;
+    int64_t delta_n = 0;
+    double delta_e = 0;
+    count numEdges = graph.numberOfEdges();
 
     if (c1 != c2) {
-        // delta_n dominates delta_e? Certainly if rho_total >> eWeight
-        // If so, we can use this information to speed up the computation
-        // delta_n = gamma * rho_total * ((1 << c2Size) - (1 << (c1Size - 1)));
         delta_n = gamma * ((1 << c2Size) - (1 << (c1Size - 1)));
-        // For edges of should be faster, current code takes 66 seconds for 1 greedy move iteration
-        // graph.forEdges(
+        INFO("Node ", v, " delta_n: ", delta_n, " for communities ", c1, " and ", c2);
+
+        count c1eSize = 0;
+        count c2eSize = 0;
+        count membershipValueC1 = 0;
+        count membershipValueC2 = 0;
+        count volumeValueC1 = 0;
+        count volumeValueC2 = 0;
+        int64_t left = 0;
+        int64_t right = 0;
+        nodeweight nWeight = 0.0;
+
         graph.forEdgesOf(v, [&](edgeid eId, edgeweight eWeight) {
-            if (graph.hasNode(v, eId)) {
-                nodeweight nWeight = graph.getNodeWeightOf(v, eId);
+            auto handleMemberships = edgeCommunityMemberships[eId].makeHandle();
+            auto handleVolumes = edgeCommunityVolumes[eId].makeHandle();
 
-                auto handleMemberships = edgeCommunityMemberships[eId].makeHandle();
-                auto handleVolumes = edgeCommunityVolumes[eId].makeHandle();
+            membershipValueC1 = handleMemberships->find(c1);
+            membershipValueC2 = handleMemberships->find(c2);
+            volumeValueC1 = handleVolumes->find(c1);
+            volumeValueC2 = handleVolumes->find(c2);
+            nWeight = graph.getNodeWeightOf(v, eId);
+            left = 0;
+            right = 0;
 
-                jFactor = handleVolumes->find(c2) + 2 * nWeight;
-                iFactor = handleVolumes->find(c1) + nWeight;
-                handleVolumes->find(c2) == Aux::ParallelHashMap::ht_invalid_value
-                    ? jFactor = 2 *nWeight
-                    : jFactor = handleVolumes->find(c2) + 2 * nWeight;
-                handleVolumes->find(c1) == Aux::ParallelHashMap::ht_invalid_value
-                    ? iFactor = nWeight
-                    : iFactor = handleVolumes->find(c1) + nWeight;
-                handleMemberships->find(c2) == Aux::ParallelHashMap::ht_invalid_value
-                    ? c2eSize = 0
-                    : c2eSize = handleMemberships->find(c2);
-                // c1 should be present in the edge. Otherwise v could not be part of it
-                handleMemberships->find(c1) == Aux::ParallelHashMap::ht_invalid_value
-                    ? c1eSize = 0
-                    : c1eSize = handleMemberships->find(c1);
-                // c2eSize = handleMemberships->find(c2);
-                // c1eSize = handleMemberships->find(c1);
+            membershipValueC1 == Aux::ParallelHashMap::ht_invalid_value
+                ? c1eSize = 0
+                : c1eSize = membershipValueC1;
+            membershipValueC2 == Aux::ParallelHashMap::ht_invalid_value
+                ? c2eSize = 0
+                : c2eSize = membershipValueC2;
 
-                // This formula looks fishy ... why c1esize - 1?
-                delta_e += eWeight * ((1 << c2eSize) * jFactor - (1 << (c1eSize - 1)) * iFactor);
+            if (c1eSize == 1) {
+                right = volumeValueC1;
+            } else if (c1eSize > 1) {
+                right = (1 << (c1eSize - 2)) * (volumeValueC1 + nWeight);
             }
+
+            if (c2eSize == 0) {
+                left = nWeight;
+            } else if (c2eSize > 0) {
+                left = (1 << (c2eSize - 1)) * (volumeValueC2 + 2 * nWeight);
+            }
+            // volumeValueC1 != Aux::ParallelHashMap::ht_invalid_value || c1eSize == 1
+            //     ? right = volumeValueC1
+            //     : right = (1 << (c1eSize - 2)) * (volumeValueC1 + nWeight);
+            // volumeValueC2 == Aux::ParallelHashMap::ht_invalid_value
+            //     ? left = nWeight
+            //     : left = (1 << (c2eSize - 1)) * (volumeValueC2 + 2 * nWeight);
+
+            // int64_t left = static_cast<int64_t>(1 << c2eSize);
+            // int64_t right = static_cast<int64_t>(1 << (c1eSize - 1));
+
+            double eVolume = static_cast<double>(graph.edgeVolume(eId));
+            // double eFactor = eVolume * (left - right);
+            double eFactor = (left - right);
+
+            delta_e += eFactor;
+            INFO("Node ", v, " edge ", eId, " eFactor: ", eFactor, " for communities ", c1, " and ",
+                 c2, " left: ", left, " right: ", right, " with edge weight ", eWeight,
+                 " and eVolume ", eVolume, " c1eSize: ", c1eSize, " c2eSize: ", c2eSize,
+                 " membershipValueC1: ", membershipValueC1,
+                 " membershipValueC2: ", membershipValueC2, " volumeValueC1: ", volumeValueC1,
+                 " volumeValueC2: ", volumeValueC2, " nWeight: ", nWeight, " delta_e: ", delta_e);
         });
+
+        // c1 should be present in the edge. Otherwise v could not be part of it
+        // graph.forEdgesOf(v, [&](edgeid eId, edgeweight eWeight) {
+        //     nodeweight nWeight = graph.getNodeWeightOf(v, eId);
+
+        //     auto handleMemberships = edgeCommunityMemberships[eId].makeHandle();
+        //     auto handleVolumes = edgeCommunityVolumes[eId].makeHandle();
+
+        //     membershipValueC1 = handleMemberships->find(c1);
+        //     membershipValueC2 = handleMemberships->find(c2);
+        //     volumeValueC1 = handleVolumes->find(c1);
+        //     volumeValueC2 = handleVolumes->find(c2);
+
+        //     membershipValueC1 == Aux::ParallelHashMap::ht_invalid_value
+        //         ? c1eSize = 0
+        //         : c1eSize = membershipValueC1;
+        //     membershipValueC2 == Aux::ParallelHashMap::ht_invalid_value
+        //         ? c2eSize = 0
+        //         : c2eSize = membershipValueC2;
+
+        //     volumeValueC1 == Aux::ParallelHashMap::ht_invalid_value
+        //         ? iFactor = nWeight
+        //         : iFactor = volumeValueC1 + nWeight;
+        //     volumeValueC2 == Aux::ParallelHashMap::ht_invalid_value
+        //         ? jFactor = 2 *nWeight
+        //         : jFactor = volumeValueC2 + 2 * nWeight;
+
+        //     int64_t left = static_cast<int64_t>((1 << c2eSize) * jFactor);
+        //     int64_t right = static_cast<int64_t>((1 << (c1eSize - 1)) * iFactor);
+
+        //     delta_e += eWeight * (left - right);
+        // });
     }
-    return delta_e - delta_n;
+    INFO("Node ", v, " delta_e: ", delta_e, " for communities ", c1, " and ", c2);
+    return delta_e / static_cast<double>(numEdges) - delta_n;
 };
 
 std::vector<bool> HyperLeiden::communityExists(const Hypergraph &graph, node v, count bestCommunity,

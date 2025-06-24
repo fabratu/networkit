@@ -224,7 +224,7 @@ edgeid Hypergraph::addEdge() {
 
     edgeIncidence.emplace_back();
     if (weighted)
-        edgeWeights.emplace_back();
+        edgeWeights.emplace_back(defaultEdgeWeight);
 
     return eid;
 }
