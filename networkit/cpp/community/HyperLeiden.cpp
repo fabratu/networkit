@@ -25,6 +25,7 @@ void HyperLeiden::run() {
     bool isFirst = true;
     Hypergraph currentG;
     mappings.clear();
+    auto lastNumberOfNodes = G->numberOfNodes();
 
     for (int pass = 0; pass < numberOfIterations; pass++) {
 
@@ -50,14 +51,14 @@ void HyperLeiden::run() {
                 std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count() / 1000.0;
             INFO("Greedy move phase time: ", duration, " seconds");
 
-            result.reset(G->upperNodeIdBound(), 0);
-            result.setUpperBound(G->upperNodeIdBound());
-            // Partition zeta(communityMemberships.size());
-            // zeta.allToSingletons();
-            G->parallelForNodes([&](node u) { result[u] = communityMemberships[u]; });
-            Modularity mod;
-            double quality = mod.getQualityHypergraph(result, *G);
-            INFO("Modularity quality of initial partition: ", quality);
+            // result.reset(G->upperNodeIdBound(), 0);
+            // result.setUpperBound(G->upperNodeIdBound());
+            // // Partition zeta(communityMemberships.size());
+            // // zeta.allToSingletons();
+            // G->parallelForNodes([&](node u) { result[u] = communityMemberships[u]; });
+            // Modularity mod;
+            // double quality = mod.getQualityHypergraph(result, *G);
+            // INFO("Modularity quality of initial partition: ", quality);
 
             // Refine disconnected communities
             start = std::chrono::high_resolution_clock::now();
@@ -76,15 +77,15 @@ void HyperLeiden::run() {
             duration =
                 std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count() / 1000.0;
             INFO("Refinement time: ", duration, " seconds");
-            result.reset(G->upperNodeIdBound(), 0);
-            result.setUpperBound(G->upperNodeIdBound());
-            // Partition zeta(communityMemberships.size());
-            // zeta.allToSingletons();
-            for (node u = 0; u < communityMemberships.size(); ++u) {
-                result.moveToSubset(communityMemberships[u], u);
-            }
-            quality = mod.getQualityHypergraph(result, *G);
-            INFO("Modularity quality of initial partition: ", quality, " with gamma = ", gamma);
+            // result.reset(G->upperNodeIdBound(), 0);
+            // result.setUpperBound(G->upperNodeIdBound());
+            // // Partition zeta(communityMemberships.size());
+            // // zeta.allToSingletons();
+            // for (node u = 0; u < communityMemberships.size(); ++u) {
+            //     result.moveToSubset(communityMemberships[u], u);
+            // }
+            // quality = mod.getQualityHypergraph(result, *G);
+            // INFO("Modularity quality of initial partition: ", quality, " with gamma = ", gamma);
 
             // exit(0);
             // Aggregate hypergraph
@@ -116,6 +117,11 @@ void HyperLeiden::run() {
             // Create mapping
             mappings.push_back(createMapping(communityMemberships, communitySizes));
             isFirst = false;
+            if (currentG.numberOfNodes() == lastNumberOfNodes || currentG.numberOfNodes() <= 2) {
+                INFO("Stopping early, no further aggregation possible.");
+                break;
+            }
+            lastNumberOfNodes = currentG.numberOfNodes();
         } else {
             INFO("Starting iteration ", pass, " of HyperLeiden");
             // Initialize memberships + sizes
@@ -167,6 +173,11 @@ void HyperLeiden::run() {
             // Create mapping
             mappings.push_back(createMapping(communityMemberships, communitySizes));
             INFO("Created mapping for pass ", pass, ": ", Aux::toString(mappings.back()));
+            if (currentG.numberOfNodes() == lastNumberOfNodes || currentG.numberOfNodes() <= 2) {
+                INFO("Stopping early, no further aggregation possible.");
+                break;
+            }
+            lastNumberOfNodes = currentG.numberOfNodes();
         }
     }
 

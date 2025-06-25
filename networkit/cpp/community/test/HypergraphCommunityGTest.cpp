@@ -263,7 +263,7 @@ TEST_F(HypergraphCommunityGTest, testHMETISReader) {
 
 TEST_F(HypergraphCommunityGTest, testHyperLeidenFromFile) {
 
-    Aux::setNumberOfThreads(1); // Set number of threads to 1 for reproducibility
+    // Aux::setNumberOfThreads(1); // Set number of threads to 1 for reproducibility
     // Test HyperLeiden on a hypergraph read from a file
     // std::string path = "input/ibm01.hypergraph";
     // std::string path = "input/3000_he.hypergraph";
@@ -299,10 +299,17 @@ TEST_F(HypergraphCommunityGTest, testHyperLeidenFromFile) {
     // e_12
     hg2.addEdge({0, 8}, true);
 
-    for (auto gamma : {0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9}) {
+    for (auto gamma :
+         {0.1, 0.2, 0.3, 0.4, 0.5, 0.55, 0.6, 0.65, 0.7, 0.75, 0.8, 0.85, 0.9, 0.95, 1.0}) {
         Aux::Log::setLogLevel("INFO");
-        HyperLeiden pl(hg2, 2, gamma);
+        HyperLeiden pl(hg2, 1, gamma);
         pl.run();
+
+        Partition zeta = pl.getPartition();
+        INFO("Partition with gamma = ", gamma, ": ", Aux::toString(zeta.getVector()));
+        Modularity mod;
+        auto quality = mod.getQualityHypergraph(zeta, hg2);
+        INFO("Modularity quality of initial partition: ", quality, " with gamma = ", gamma);
     }
 
     // Aux::Log::setLogLevel("INFO");
