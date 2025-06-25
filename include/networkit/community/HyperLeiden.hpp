@@ -119,8 +119,8 @@ private:
                      std::vector<Aux::ParallelHashMap> &edgeCommunityVolumes) const;
 
     // maps to "leidenRenumberCommunitiesW" in GVE-Leiden
-    void renumberCommunities(std::vector<count> &communityMemberships,
-                             std::vector<count> &communitySizes);
+    count renumberCommunities(std::vector<count> &communityMemberships,
+                              std::vector<count> &communitySizes);
 
     // maps to "leidenChangeCommunity" in GVE-Leiden
     template <bool Refine = false>

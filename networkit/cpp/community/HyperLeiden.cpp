@@ -233,7 +233,7 @@ Hypergraph HyperLeiden::aggregateHypergraph(const Hypergraph &graph,
                                             std::vector<count> &communitySizes) {
 
     // Renumber communities based on prefix sum
-    renumberCommunities(communityMemberships, communitySizes);
+    count numCommunities = renumberCommunities(communityMemberships, communitySizes);
     INFO("Renumbered communities: ", Aux::toString(communityMemberships));
     INFO("Community sizes: ", Aux::toString(communitySizes));
 
@@ -265,7 +265,6 @@ Hypergraph HyperLeiden::aggregateHypergraph(const Hypergraph &graph,
         }
         return nodesInEdge;
     };
-    auto numCommunities = communitySizes[communitySizes.size() - 1];
 
     // std::unordered_map<std::vector<bool>, std::vector<edgeid>> hashDatabase;
     std::unordered_map<std::vector<bool>, std::vector<edgeid>, CustomHasher> hashDatabase;
@@ -281,6 +280,7 @@ Hypergraph HyperLeiden::aggregateHypergraph(const Hypergraph &graph,
             communityMemberships[nodes.begin()->first];     // Get the first node's community id
         nodeweight indicatorWeight = nodes.begin()->second; // Get the first node's weight
         std::vector<bool> communityBits(numCommunities, false);
+        INFO("Community bits: ", Aux::toString(communityBits));
 
         for (const auto &node : nodes) {
             if (isSingletonEdge && communityMemberships[node.first] != indicatorCommunity) {
@@ -297,12 +297,12 @@ Hypergraph HyperLeiden::aggregateHypergraph(const Hypergraph &graph,
             // If not singleton, create a hash of the community bits
             auto it = hashDatabase.find(communityBits);
             if (it == hashDatabase.end()) {
-                // auto communityHash = std::hash<std::vector<bool>>{}(communityBits);
-                // auto communityHash2 = boost::hash_range(
-                //     communityBits.begin(), communityBits.end()); // Combine bits into a hash
-                // INFO("Creating new entry in hash database for community bits: ",
-                //      Aux::toString(communityBits), " with hash: ", communityHash, " and ",
-                //      communityHash2);
+                auto communityHash = std::hash<std::vector<bool>>{}(communityBits);
+                auto communityHash2 = boost::hash_range(
+                    communityBits.begin(), communityBits.end()); // Combine bits into a hash
+                INFO("Creating new entry in hash database for community bits: ",
+                     Aux::toString(communityBits), " with hash: ", communityHash, " and ",
+                     communityHash2);
                 hashDatabase[communityBits] = {eId};
             } else {
                 // If found, add edge to the entry
@@ -548,8 +548,8 @@ std::vector<bool> HyperLeiden::communityExists(const Hypergraph &graph, node v, 
     return communityExists;
 };
 
-void HyperLeiden::renumberCommunities(std::vector<count> &communityMemberships,
-                                      std::vector<count> &communitySizes) {
+count HyperLeiden::renumberCommunities(std::vector<count> &communityMemberships,
+                                       std::vector<count> &communitySizes) {
     // Renumber communities based on prefix sum. This effectively destroys the old
     // information in communitySizes.
     INFO("Community memberships before renumbering: ", Aux::toString(communityMemberships));
@@ -568,6 +568,7 @@ void HyperLeiden::renumberCommunities(std::vector<count> &communityMemberships,
     for (size_t i = 0; i < communityMemberships.size(); i++) {
         communityMemberships[i] = communitySizes[communityMemberships[i]];
     }
+    return numCommunities;
 };
 
 std::vector<node> HyperLeiden::createMapping(const std::vector<count> &communityMemberships,
