@@ -5,6 +5,8 @@
  *     Author: Fabian Brandt-Tumescheit
  */
 
+#include <boost/functional/hash.hpp>
+
 #include <networkit/auxiliary/Log.hpp>
 #include <networkit/community/HyperLeiden.hpp>
 #include <networkit/community/Modularity.hpp>
@@ -82,8 +84,9 @@ void HyperLeiden::run() {
                 result.moveToSubset(communityMemberships[u], u);
             }
             quality = mod.getQualityHypergraph(result, *G);
-            INFO("Modularity quality of initial partition: ", quality);
-            exit(0);
+            INFO("Modularity quality of initial partition: ", quality, " with gamma = ", gamma);
+
+            // exit(0);
             // Aggregate hypergraph
             start = std::chrono::high_resolution_clock::now();
             currentG = aggregateHypergraph(*G, communityMemberships, communitySizes);
@@ -93,7 +96,7 @@ void HyperLeiden::run() {
             INFO("Aggregation time: ", duration, " seconds");
             // Create mapping
             mappings.push_back(createMapping(communityMemberships, communitySizes));
-
+            return;
             isFirst = false;
         } else {
             // Initialize memberships + sizes
@@ -214,7 +217,7 @@ void HyperLeiden::refineDisconnected(const Hypergraph &graph,
             auto end = std::chrono::high_resolution_clock::now();
             double duration =
                 std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count() / 1000.0;
-            INFO("get best community time for node ", u, ": ", duration, " seconds");
+            // INFO("get best community time for node ", u, ": ", duration, " seconds");
             if (bestCommunity != communityMemberships[u]) {
                 if (updateMemberships<true>(graph, u, bestCommunity, communityMemberships,
                                             communitySizes, edgeCommunityMemberships,
@@ -231,9 +234,19 @@ Hypergraph HyperLeiden::aggregateHypergraph(const Hypergraph &graph,
 
     // Renumber communities based on prefix sum
     renumberCommunities(communityMemberships, communitySizes);
+    INFO("Renumbered communities: ", Aux::toString(communityMemberships));
+    INFO("Community sizes: ", Aux::toString(communitySizes));
 
     // Create new hypergraph with number of nodes = number of communities
     Hypergraph aggHypergraph(communitySizes[communitySizes.size() - 1], 0, true);
+
+    struct CustomHasher {
+        // noexcept is recommended, but not required
+        std::size_t operator()(const std::vector<bool> &s) const /*noexcept*/
+        {
+            return boost::hash_range(s.begin(), s.end());
+        }
+    };
 
     // TODO: maybe there is something more efficient here
     // Iterate over edges of the original hypergraph
@@ -252,17 +265,22 @@ Hypergraph HyperLeiden::aggregateHypergraph(const Hypergraph &graph,
         }
         return nodesInEdge;
     };
+    auto numCommunities = communitySizes[communitySizes.size() - 1];
 
-    std::unordered_map<std::vector<bool>, std::vector<edgeid>> hashDatabase;
+    // std::unordered_map<std::vector<bool>, std::vector<edgeid>> hashDatabase;
+    std::unordered_map<std::vector<bool>, std::vector<edgeid>, CustomHasher> hashDatabase;
     graph.forEdges([&](edgeid eId) {
-        auto nodes = graph.nodesOf(eId);
-        bool isSingletonEdge = true;
         if (graph.order(eId) == 0) {
             return; // Skip empty edges
         }
-        count indicatorCommunity = nodes.begin()->first; // Get the first node's community id
-        nodeweight indicatorWeight = 1;
-        std::vector<bool> communityBits(communitySizes[communitySizes.size() - 1], false);
+
+        auto nodes = graph.nodesOf(eId);
+        bool isSingletonEdge = true;
+
+        count indicatorCommunity =
+            communityMemberships[nodes.begin()->first];     // Get the first node's community id
+        nodeweight indicatorWeight = nodes.begin()->second; // Get the first node's weight
+        std::vector<bool> communityBits(numCommunities, false);
 
         for (const auto &node : nodes) {
             if (isSingletonEdge && communityMemberships[node.first] != indicatorCommunity) {
@@ -279,6 +297,12 @@ Hypergraph HyperLeiden::aggregateHypergraph(const Hypergraph &graph,
             // If not singleton, create a hash of the community bits
             auto it = hashDatabase.find(communityBits);
             if (it == hashDatabase.end()) {
+                // auto communityHash = std::hash<std::vector<bool>>{}(communityBits);
+                // auto communityHash2 = boost::hash_range(
+                //     communityBits.begin(), communityBits.end()); // Combine bits into a hash
+                // INFO("Creating new entry in hash database for community bits: ",
+                //      Aux::toString(communityBits), " with hash: ", communityHash, " and ",
+                //      communityHash2);
                 hashDatabase[communityBits] = {eId};
             } else {
                 // If found, add edge to the entry
@@ -323,7 +347,8 @@ void HyperLeiden::initializeMemberships(
     });
 }
 
-// TODO: Maybe doing this directly is more efficient than saving the infos in communities variable
+// TODO: Maybe doing this directly is more efficient than saving the infos in communities
+// variable
 std::unordered_map<count, count>
 HyperLeiden::gatherNeighboringCommunities(const Hypergraph &graph, node v,
                                           const std::vector<count> &communityMemberships,
@@ -356,9 +381,9 @@ HyperLeiden::getBestCommunity(const Hypergraph &graph, node v, count rho_total,
     // auto [bestCommunity, bestGain] = std::make_pair(0, 0.0);
     auto neighboringCommunities =
         gatherNeighboringCommunities(graph, v, communityMemberships, communitySizes);
-    INFO("Node ", v, " has ", neighboringCommunities.size(), " neighboring communities");
+    // INFO("Node ", v, " has ", neighboringCommunities.size(), " neighboring communities");
     for (const auto &[c, size] : neighboringCommunities) {
-        INFO("Node ", v, " has neighboring community ", c, " with size ", size);
+        // INFO("Node ", v, " has neighboring community ", c, " with size ", size);
     }
     for (const auto &[c, size] : neighboringCommunities) {
         // if (v == 3319 && c == 5739) {
@@ -367,7 +392,7 @@ HyperLeiden::getBestCommunity(const Hypergraph &graph, node v, count rho_total,
         double gain =
             deltaHCPM(graph, v, rho_total, oldCommunity, c, oldSize, size, communityMemberships,
                       communitySizes, edgeCommunityMemberships, edgeCommunityVolumes);
-        INFO("Node ", v, " gain for community ", c, ": ", gain);
+        // INFO("Node ", v, " gain for community ", c, ": ", gain);
         if (gain > bestGain) {
             bestGain = gain;
             bestCommunity = c;
@@ -381,7 +406,8 @@ HyperLeiden::getBestCommunity(const Hypergraph &graph, node v, count rho_total,
     //             INFO("Envoking deltaHCPM");
     //         }
     //         int64_t gain =
-    //             deltaHCPM(graph, v, rho_total, oldCommunity, communityMemberships[w], oldSize,
+    //             deltaHCPM(graph, v, rho_total, oldCommunity, communityMemberships[w],
+    //             oldSize,
     //                       communitySizes[communityMemberships[w]], communityMemberships,
     //                       communitySizes, edgeCommunityMemberships, edgeCommunityVolumes);
     //         if (gain > bestGain) {
@@ -407,7 +433,7 @@ double HyperLeiden::deltaHCPM(const Hypergraph &graph, node v, count rho_total, 
 
     if (c1 != c2) {
         delta_n = gamma * ((1 << c2Size) - (1 << (c1Size - 1)));
-        INFO("Node ", v, " delta_n: ", delta_n, " for communities ", c1, " and ", c2);
+        // INFO("Node ", v, " delta_n: ", delta_n, " for communities ", c1, " and ", c2);
 
         count c1eSize = 0;
         count c2eSize = 0;
@@ -464,12 +490,15 @@ double HyperLeiden::deltaHCPM(const Hypergraph &graph, node v, count rho_total, 
             double eFactor = (left - right);
 
             delta_e += eFactor;
-            INFO("Node ", v, " edge ", eId, " eFactor: ", eFactor, " for communities ", c1, " and ",
-                 c2, " left: ", left, " right: ", right, " with edge weight ", eWeight,
-                 " and eVolume ", eVolume, " c1eSize: ", c1eSize, " c2eSize: ", c2eSize,
-                 " membershipValueC1: ", membershipValueC1,
-                 " membershipValueC2: ", membershipValueC2, " volumeValueC1: ", volumeValueC1,
-                 " volumeValueC2: ", volumeValueC2, " nWeight: ", nWeight, " delta_e: ", delta_e);
+            // INFO("Node ", v, " edge ", eId, " eFactor: ", eFactor, " for communities ", c1, "
+            // and
+            // ",
+            //      c2, " left: ", left, " right: ", right, " with edge weight ", eWeight,
+            //      " and eVolume ", eVolume, " c1eSize: ", c1eSize, " c2eSize: ", c2eSize,
+            //      " membershipValueC1: ", membershipValueC1,
+            //      " membershipValueC2: ", membershipValueC2, " volumeValueC1: ",
+            //      volumeValueC1, " volumeValueC2: ", volumeValueC2, " nWeight: ", nWeight, "
+            //      delta_e: ", delta_e);
         });
 
         // c1 should be present in the edge. Otherwise v could not be part of it
@@ -504,7 +533,7 @@ double HyperLeiden::deltaHCPM(const Hypergraph &graph, node v, count rho_total, 
         //     delta_e += eWeight * (left - right);
         // });
     }
-    INFO("Node ", v, " delta_e: ", delta_e, " for communities ", c1, " and ", c2);
+    // INFO("Node ", v, " delta_e: ", delta_e, " for communities ", c1, " and ", c2);
     return delta_e / static_cast<double>(numEdges) - delta_n;
 };
 
@@ -523,6 +552,8 @@ void HyperLeiden::renumberCommunities(std::vector<count> &communityMemberships,
                                       std::vector<count> &communitySizes) {
     // Renumber communities based on prefix sum. This effectively destroys the old
     // information in communitySizes.
+    INFO("Community memberships before renumbering: ", Aux::toString(communityMemberships));
+    INFO("Community sizes before renumbering: ", Aux::toString(communitySizes));
     count numCommunities = 0;
     for (size_t i = 0; i < communitySizes.size(); i++) {
         count entry = communitySizes[i];

@@ -231,6 +231,13 @@ else()
 			INTERFACE_INCLUDE_DIRECTORIES "${NETWORKIT_EXT_TLX}/include/")
 endif()
 
+if(EXISTS "${PROJECT_SOURCE_DIR}/extlibs/container_hash-boost/CMakeLists.txt")
+	add_subdirectory(extlibs/mp11-boost)
+	add_subdirectory(extlibs/describe-boost)
+	add_subdirectory(extlibs/config-boost)
+	add_subdirectory(extlibs/container_hash-boost)
+endif()
+
 ################################################################################
 # NETWORKIT MODULES
 if(NETWORKIT_BUILD_CORE AND NETWORKIT_MONOLITH)
@@ -264,7 +271,7 @@ if(NETWORKIT_BUILD_CORE AND NETWORKIT_MONOLITH)
 		target_include_directories(networkit_state BEFORE PUBLIC "${PROJECT_SOURCE_DIR}/include")
 	endif()
 
-	target_link_libraries(networkit PRIVATE OpenMP::OpenMP_CXX PUBLIC tlx)
+	target_link_libraries(networkit PRIVATE OpenMP::OpenMP_CXX PUBLIC tlx Boost::container_hash)
 
 	set_target_properties(networkit PROPERTIES
 			CXX_STANDARD ${NETWORKIT_CXX_STANDARD}
@@ -361,7 +368,7 @@ if(NETWORKIT_PYTHON)
 			endif()
 		endif()
 
-		target_link_libraries(${TARGET_LIB} PRIVATE OpenMP::OpenMP_CXX PUBLIC tlx)
+		target_link_libraries(${TARGET_LIB} PRIVATE OpenMP::OpenMP_CXX PUBLIC tlx Boost::container_hash)
 
 		install(TARGETS ${TARGET_LIB}
 			LIBRARY DESTINATION "${NETWORKIT_LIB_DEST}/networkit")
@@ -390,7 +397,7 @@ function(networkit_add_module modname)
 			COMPILE_FLAGS "${NETWORKIT_CXX_FLAGS}"
 			LINK_FLAGS "${NETWORKIT_LINK_FLAGS}")
 
-		target_link_libraries(${MODULE_TARGET} PRIVATE OpenMP::OpenMP_CXX PUBLIC tlx)
+		target_link_libraries(${MODULE_TARGET} PRIVATE OpenMP::OpenMP_CXX PUBLIC tlx Boost::container_hash)
 		target_include_directories(${MODULE_TARGET} BEFORE PUBLIC "${PROJECT_SOURCE_DIR}/include")
 		target_include_directories(${MODULE_TARGET} PUBLIC "${PROJECT_SOURCE_DIR}/extlibs/ttmath/")
 
@@ -481,6 +488,7 @@ if (NETWORKIT_BUILD_TESTS)
 				networkit
 				tlx
 				OpenMP::OpenMP_CXX
+				Boost::container_hash
 		)
 
 		if(WIN32)
@@ -528,6 +536,7 @@ if (NETWORKIT_BUILD_TESTS)
 					tlx
 					networkit_auxiliary
 					OpenMP::OpenMP_CXX
+					Boost::container_hash
 		)
 	endif()
 endif()
@@ -562,6 +571,7 @@ function(networkit_add_extra IS_TEST MOD NAME)
 					networkit_${MOD}
 					tlx
 					OpenMP::OpenMP_CXX
+					Boost::container_hash
 					)
 			set_target_properties(${TARGET_NAME} PROPERTIES
 				CXX_STANDARD ${NETWORKIT_CXX_STANDARD}

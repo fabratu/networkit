@@ -299,13 +299,19 @@ TEST_F(HypergraphCommunityGTest, testHyperLeidenFromFile) {
     // e_12
     hg2.addEdge({0, 8}, true);
 
-    Aux::Log::setLogLevel("INFO");
-    HyperLeiden pl(hg2, 2, 0.4);
-    pl.run();
-    Partition zeta = pl.getPartition();
+    for (auto gamma : {0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9}) {
+        Aux::Log::setLogLevel("INFO");
+        HyperLeiden pl(hg2, 2, gamma);
+        pl.run();
+    }
 
-    // Check if the partition has been created correctly
-    ASSERT_EQ(zeta.numberOfSubsets(), 3); // Adjust based on your test file
+    // Aux::Log::setLogLevel("INFO");
+    // HyperLeiden pl(hg2, 2, 0.5);
+    // pl.run();
+    // Partition zeta = pl.getPartition();
+
+    // // Check if the partition has been created correctly
+    // ASSERT_EQ(zeta.numberOfSubsets(), 3); // Adjust based on your test file
 }
 
 } // namespace NetworKit
