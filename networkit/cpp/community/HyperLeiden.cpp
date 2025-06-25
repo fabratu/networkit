@@ -94,11 +94,30 @@ void HyperLeiden::run() {
             duration =
                 std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count() / 1000.0;
             INFO("Aggregation time: ", duration, " seconds");
+            INFO("Graph after first pass has ", currentG.numberOfNodes(), " nodes and ",
+                 currentG.numberOfEdges(), " edges.");
+
+            // Print all hyperedges of the graph
+            INFO("Printing all hyperedges of the graph:");
+            currentG.forEdges([&](edgeid eId) {
+                auto nodes = currentG.nodesOf(eId);
+                std::string edgeStr = "Edge " + std::to_string(eId) + ": {";
+                bool first = true;
+                for (const auto &nodePair : nodes) {
+                    if (!first)
+                        edgeStr += ", ";
+                    edgeStr += std::to_string(nodePair.first)
+                               + "(w=" + std::to_string(nodePair.second) + ")";
+                    first = false;
+                }
+                edgeStr += "}";
+                INFO(edgeStr);
+            });
             // Create mapping
             mappings.push_back(createMapping(communityMemberships, communitySizes));
-            return;
             isFirst = false;
         } else {
+            INFO("Starting iteration ", pass, " of HyperLeiden");
             // Initialize memberships + sizes
             std::vector<count> communityMemberships(currentG.upperNodeIdBound(), 0);
             std::vector<count> communitySizes(currentG.upperNodeIdBound(), 0);
@@ -125,13 +144,34 @@ void HyperLeiden::run() {
 
             // Aggregate hypergraph
             currentG = aggregateHypergraph(currentG, communityMemberships, communitySizes);
+            INFO("Graph after current pass has ", currentG.numberOfNodes(), " nodes and ",
+                 currentG.numberOfEdges(), " edges.");
+
+            // Print all hyperedges of the graph
+            INFO("Printing all hyperedges of the graph:");
+            currentG.forEdges([&](edgeid eId) {
+                auto nodes = currentG.nodesOf(eId);
+                std::string edgeStr = "Edge " + std::to_string(eId) + ": {";
+                bool first = true;
+                for (const auto &nodePair : nodes) {
+                    if (!first)
+                        edgeStr += ", ";
+                    edgeStr += std::to_string(nodePair.first)
+                               + "(w=" + std::to_string(nodePair.second) + ")";
+                    first = false;
+                }
+                edgeStr += "}";
+                INFO(edgeStr);
+            });
 
             // Create mapping
             mappings.push_back(createMapping(communityMemberships, communitySizes));
+            INFO("Created mapping for pass ", pass, ": ", Aux::toString(mappings.back()));
         }
     }
 
     // TODO: unroll mappings to get final community memberships
+    INFO("Final mappings: ", Aux::toString(mappings));
     flattenPartition();
 
     hasRun = true;
@@ -238,7 +278,7 @@ Hypergraph HyperLeiden::aggregateHypergraph(const Hypergraph &graph,
     INFO("Community sizes: ", Aux::toString(communitySizes));
 
     // Create new hypergraph with number of nodes = number of communities
-    Hypergraph aggHypergraph(communitySizes[communitySizes.size() - 1], 0, true);
+    Hypergraph aggHypergraph(numCommunities, 0, true);
 
     struct CustomHasher {
         // noexcept is recommended, but not required
@@ -268,6 +308,11 @@ Hypergraph HyperLeiden::aggregateHypergraph(const Hypergraph &graph,
 
     // std::unordered_map<std::vector<bool>, std::vector<edgeid>> hashDatabase;
     std::unordered_map<std::vector<bool>, std::vector<edgeid>, CustomHasher> hashDatabase;
+    std::vector<edgeid> singletonDatabase(numCommunities, std::numeric_limits<edgeid>::max());
+
+    INFO("Starting aggregation of hypergraph with ", aggHypergraph.numberOfNodes(), " nodes and ",
+         aggHypergraph.numberOfEdges(), " edges.");
+
     graph.forEdges([&](edgeid eId) {
         if (graph.order(eId) == 0) {
             return; // Skip empty edges
@@ -277,10 +322,9 @@ Hypergraph HyperLeiden::aggregateHypergraph(const Hypergraph &graph,
         bool isSingletonEdge = true;
 
         count indicatorCommunity =
-            communityMemberships[nodes.begin()->first];     // Get the first node's community id
-        nodeweight indicatorWeight = nodes.begin()->second; // Get the first node's weight
+            communityMemberships[nodes.begin()->first]; // Get the first node's community id
+        nodeweight indicatorWeight = 0.0;
         std::vector<bool> communityBits(numCommunities, false);
-        INFO("Community bits: ", Aux::toString(communityBits));
 
         for (const auto &node : nodes) {
             if (isSingletonEdge && communityMemberships[node.first] != indicatorCommunity) {
@@ -291,38 +335,78 @@ Hypergraph HyperLeiden::aggregateHypergraph(const Hypergraph &graph,
         }
 
         if (isSingletonEdge) {
-            // If singleton edge, add to new hypergraph
-            aggHypergraph.addEdge({indicatorCommunity}, false, {indicatorWeight});
+            // If singleton edge, add to new hypergraph or update weight
+            if (singletonDatabase[indicatorCommunity] == std::numeric_limits<edgeid>::max()) {
+
+                // If this is the first singleton edge for this community, add it
+                singletonDatabase[indicatorCommunity] =
+                    aggHypergraph.addEdge({indicatorCommunity}, false, {indicatorWeight});
+                INFO("Adding singleton edge with community ", indicatorCommunity, " and weight ",
+                     indicatorWeight, " for edge id: ", eId,
+                     " new edge id: ", singletonDatabase[indicatorCommunity]);
+
+            } else {
+                INFO("Updating singleton edge with community ", indicatorCommunity, " and weight ",
+                     indicatorWeight, " for edge id: ", eId,
+                     " new edge id: ", singletonDatabase[indicatorCommunity]);
+                // If already exists, update the weight
+                aggHypergraph.updateNodeWeightOf(
+                    indicatorCommunity, singletonDatabase[indicatorCommunity], indicatorWeight);
+            }
         } else {
             // If not singleton, create a hash of the community bits
             auto it = hashDatabase.find(communityBits);
             if (it == hashDatabase.end()) {
-                auto communityHash = std::hash<std::vector<bool>>{}(communityBits);
-                auto communityHash2 = boost::hash_range(
-                    communityBits.begin(), communityBits.end()); // Combine bits into a hash
-                INFO("Creating new entry in hash database for community bits: ",
-                     Aux::toString(communityBits), " with hash: ", communityHash, " and ",
-                     communityHash2);
+                // auto communityHash = std::hash<std::vector<bool>>{}(communityBits);
+                // auto communityHash2 = boost::hash_range(
+                //     communityBits.begin(), communityBits.end()); // Combine bits into a hash
+                // INFO("Creating new entry in hash database for community bits: ",
+                //      Aux::toString(communityBits), " with hash: ", communityHash, " and ",
+                //      communityHash2, " for edge id: ", eId);
                 hashDatabase[communityBits] = {eId};
             } else {
                 // If found, add edge to the entry
                 hashDatabase[communityBits].push_back(eId);
             }
         }
-
-        for (const auto &entry : hashDatabase) {
-            // Add edge to hypergraph
-            edgeid newEdge = aggHypergraph.addEdge(convertBitsToNodes(entry.first));
-            // Gather weights from the edges in the hash database
-            for (const auto edgeId : entry.second) {
-                auto edgeNodes = graph.nodesOf(edgeId);
-                for (const auto &nodeEntry : edgeNodes) {
-                    aggHypergraph.updateNodeWeightOf(newEdge, communityMemberships[nodeEntry.first],
-                                                     nodeEntry.second);
-                }
+    });
+    INFO("After singleton the graph has ", aggHypergraph.numberOfNodes(), " nodes and ",
+         aggHypergraph.numberOfEdges(), " edges.");
+    INFO("Singleton edges in the database: ", Aux::toString(singletonDatabase));
+    INFO("Each singleton edge has node id and weight: ");
+    aggHypergraph.forEdges([&](edgeid eId) {
+        auto nodes = aggHypergraph.nodesOf(eId);
+        std::string edgeStr = "Edge " + std::to_string(eId) + ": {";
+        bool first = true;
+        for (const auto &nodeEntry : nodes) {
+            if (!first)
+                edgeStr += ", ";
+            edgeStr +=
+                std::to_string(nodeEntry.first) + "(w=" + std::to_string(nodeEntry.second) + ")";
+            first = false;
+        }
+        edgeStr += "}";
+        INFO(edgeStr);
+    });
+    INFO("Hash database has ", hashDatabase.size(), " entries.");
+    for (const auto &entry : hashDatabase) {
+        INFO("Processing hash entry with community bits: ", Aux::toString(entry.first),
+             " and edges: ", Aux::toString(entry.second));
+        // Add edge to hypergraph
+        edgeid newEdge = aggHypergraph.addEdge(convertBitsToNodes(entry.first));
+        auto edgeNodes = aggHypergraph.nodesOf(newEdge);
+        for (const auto &nodeEntry : edgeNodes) {
+            aggHypergraph.setNodeWeightOf(nodeEntry.first, newEdge, 0.0);
+        }
+        // Gather weights from the edges in the hash database
+        for (const auto edgeId : entry.second) {
+            auto edgeNodes = graph.nodesOf(edgeId);
+            for (const auto &nodeEntry : edgeNodes) {
+                aggHypergraph.updateNodeWeightOf(communityMemberships[nodeEntry.first], newEdge,
+                                                 nodeEntry.second);
             }
         }
-    });
+    }
     return aggHypergraph;
 }
 
@@ -573,9 +657,9 @@ count HyperLeiden::renumberCommunities(std::vector<count> &communityMemberships,
 
 std::vector<node> HyperLeiden::createMapping(const std::vector<count> &communityMemberships,
                                              const std::vector<count> &communitySizes) const {
-    std::vector<node> mapping(communitySizes[communitySizes.size() - 1]);
+    std::vector<node> mapping(communityMemberships.size(), 0);
     for (size_t i = 0; i < communityMemberships.size(); i++) {
-        mapping[communityMemberships[i]] = i;
+        mapping[i] = communityMemberships[i];
     }
     return mapping;
 }
