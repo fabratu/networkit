@@ -317,8 +317,8 @@ void HyperLeiden::initializeMemberships(
         auto handleVolumes = edgeCommunityVolumes[eId].makeHandle();
         auto nodes = graph.nodesOf(eId);
         for (auto &it : nodes) {
-            handleMemberships->insert(communityMemberships[it.first], 1);
-            handleVolumes->insert(communityMemberships[it.first], it.second);
+            handleMemberships.insert(communityMemberships[it.first], 1);
+            handleVolumes.insert(communityMemberships[it.first], it.second);
         }
     });
 }
@@ -423,10 +423,10 @@ double HyperLeiden::deltaHCPM(const Hypergraph &graph, node v, count rho_total, 
             auto handleMemberships = edgeCommunityMemberships[eId].makeHandle();
             auto handleVolumes = edgeCommunityVolumes[eId].makeHandle();
 
-            membershipValueC1 = handleMemberships->find(c1);
-            membershipValueC2 = handleMemberships->find(c2);
-            volumeValueC1 = handleVolumes->find(c1);
-            volumeValueC2 = handleVolumes->find(c2);
+            membershipValueC1 = handleMemberships.find(c1);
+            membershipValueC2 = handleMemberships.find(c2);
+            volumeValueC1 = handleVolumes.find(c1);
+            volumeValueC2 = handleVolumes.find(c2);
             nWeight = graph.getNodeWeightOf(v, eId);
             left = 0;
             right = 0;

@@ -148,11 +148,11 @@ private:
             }
             auto handleMemberships = edgeCommunityMemberships[v].makeHandle();
             auto handleVolumes = edgeCommunityVolumes[v].makeHandle();
-            auto currentMemberships = handleMemberships->find(v);
+            auto currentMemberships = handleMemberships.find(v);
 
-            auto currentVolumes = handleVolumes->find(v);
-            handleMemberships->update(currentMembership, currentMemberships - 1);
-            handleVolumes->update(currentMembership, currentVolumes - graph.getNodeWeight(v));
+            auto currentVolumes = handleVolumes.find(v);
+            handleMemberships.update(currentMembership, currentMemberships - 1);
+            handleVolumes.update(currentMembership, currentVolumes - graph.getNodeWeight(v));
         } else {
             // auto edgesOf = graph.edgesOf(v);
             count memberShipValue = 0;
@@ -161,10 +161,10 @@ private:
                 auto handleMemberships = edgeCommunityMemberships[eId].makeHandle();
                 auto handleVolumes = edgeCommunityVolumes[eId].makeHandle();
                 // TODO: increment + decrement in ParallelHashMap
-                memberShipValue = handleMemberships->find(currentMembership);
-                volumeValue = handleVolumes->find(currentMembership);
-                handleMemberships->update(currentMembership, memberShipValue - 1);
-                handleVolumes->update(currentMembership, volumeValue - graph.getNodeWeight(v));
+                memberShipValue = handleMemberships.find(currentMembership);
+                volumeValue = handleVolumes.find(currentMembership);
+                handleMemberships.update(currentMembership, memberShipValue - 1);
+                handleVolumes.update(currentMembership, volumeValue - graph.getNodeWeight(v));
             });
 #pragma omp atomic
             communitySizes[currentMembership]--;
@@ -176,14 +176,14 @@ private:
             // for (auto &it : edgesOf) {
             auto handleMemberships = edgeCommunityMemberships[eId].makeHandle();
             auto handleVolumes = edgeCommunityVolumes[eId].makeHandle();
-            auto memberShipValue = handleMemberships->find(bestCommunity);
-            auto volumeValue = handleVolumes->find(bestCommunity);
+            auto memberShipValue = handleMemberships.find(bestCommunity);
+            auto volumeValue = handleVolumes.find(bestCommunity);
             if (memberShipValue == Aux::ParallelHashMap::ht_invalid_value) {
-                handleMemberships->insert(bestCommunity, 1);
-                handleVolumes->insert(bestCommunity, graph.getNodeWeight(v));
+                handleMemberships.insert(bestCommunity, 1);
+                handleVolumes.insert(bestCommunity, graph.getNodeWeight(v));
             } else {
-                handleMemberships->update(bestCommunity, memberShipValue + 1);
-                handleVolumes->update(bestCommunity, volumeValue + graph.getNodeWeight(v));
+                handleMemberships.update(bestCommunity, memberShipValue + 1);
+                handleVolumes.update(bestCommunity, volumeValue + graph.getNodeWeight(v));
             }
         });
 #pragma omp atomic
