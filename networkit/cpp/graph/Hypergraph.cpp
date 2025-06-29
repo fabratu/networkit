@@ -165,10 +165,10 @@ void Hypergraph::updateNodeWeightOf(node u, edgeid eid, nodeweight update) {
 
     if (!weighted)
         return;
-    INFO("Updating node weight of node ", u, " in edge ", eid, " by ", update);
-    INFO("Current weight: ", edgeIncidence[eid][u]);
+    // INFO("Updating node weight of node ", u, " in edge ", eid, " by ", update);
+    // INFO("Current weight: ", edgeIncidence[eid][u]);
     edgeIncidence[eid][u] += update;
-    INFO("New weight: ", edgeIncidence[eid][u]);
+    // INFO("New weight: ", edgeIncidence[eid][u]);
 }
 
 count Hypergraph::degree(node u) const {
@@ -243,15 +243,15 @@ edgeid Hypergraph::addEdge(const std::vector<node> &nodes, bool addMissing,
         }
     }
 
-    INFO("Adding edge with id ", eid, " and nodes: ", Aux::toString(nodes),
-         " and weights: ", Aux::toString(weights));
-    INFO("Edge incidence: ", Aux::toString(edgeIncidence[eid]));
-    INFO("Current nextNodeId: ", nextNodeId);
+    // INFO("Adding edge with id ", eid, " and nodes: ", Aux::toString(nodes),
+    //      " and weights: ", Aux::toString(weights));
+    // INFO("Edge incidence: ", Aux::toString(edgeIncidence[eid]));
+    // INFO("Current nextNodeId: ", nextNodeId);
 
     if (addMissing) {
         node currentMax;
         for (auto v : edgeIncidence[eid]) {
-            INFO("Checking node ", v.first, " with weight ", v.second);
+            // INFO("Checking node ", v.first, " with weight ", v.second);
             currentMax = nextNodeId;
             while (v.first >= currentMax) {
                 currentMax = addNode();

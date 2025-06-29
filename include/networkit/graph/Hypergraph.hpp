@@ -15,6 +15,7 @@
 
 #include <networkit/Globals.hpp>
 #include <networkit/auxiliary/FunctionTraits.hpp>
+#include <networkit/auxiliary/Random.hpp>
 #include <networkit/graph/Attributes.hpp>
 #include <networkit/graph/EdgeIterators.hpp>
 #include <networkit/graph/NeighborIterators.hpp>
@@ -490,13 +491,22 @@ public:
     void forNodes(L handle) const;
 
     /**
-     * Iterate randomly over all nodes of the graph and call @a handle (lambda
+     * Iterate parallel over all nodes of the graph and call @a handle (lambda
      * closure).
      *
      * @param handle Takes parameter <code>(node)</code>.
      */
     template <typename L>
     void parallelForNodes(L handle) const;
+
+    /**
+     * Iterate randomly in parallel over all nodes of the graph and call @a handle (lambda
+     * closure).
+     *
+     * @param handle Takes parameter <code>(node)</code>.
+     */
+    template <typename L>
+    void parallelForNodesInRandomOrder(L handle) const;
 
     /**
      * @brief Implementation of the for loop for all nodes, @see forNodes
@@ -515,6 +525,15 @@ public:
      */
     template <bool hasWeights, typename L>
     inline void parallelForNodesImpl(L handle) const;
+
+    /**
+     * @brief Implementation of the parallel for loop for all nodes, @see parallelForNodes
+     *
+     * @param handle The handle that shall be executed for all nodes
+     * @return void
+     */
+    template <bool hasWeights, typename L>
+    inline void parallelForNodesInRandomOrderImpl(L handle) const;
 
     // For support of API: NetworKit::Hypergraph::NodeIterator
     using NodeIterator = NodeIteratorBase<Hypergraph>;
@@ -679,6 +698,19 @@ void Hypergraph::parallelForNodes(L handle) const {
     }
 }
 
+template <typename L>
+void Hypergraph::parallelForNodesInRandomOrder(L handle) const {
+    switch (static_cast<count>(weighted)) {
+    case 0: // unweighted
+        parallelForNodesInRandomOrderImpl<false, L>(handle);
+        break;
+
+    case 1: // weighted
+        parallelForNodesInRandomOrderImpl<true, L>(handle);
+        break;
+    }
+}
+
 template <bool hasWeights, typename L>
 void Hypergraph::forNodesImpl(L handle) const {
     for (node nId = 0; nId < nextNodeId; ++nId) {
@@ -695,6 +727,18 @@ void Hypergraph::parallelForNodesImpl(L handle) const {
         if (nodeExists[nId]) {
             nodeLambda<L>(handle, nId, nodeWeightIteratorHelper<hasWeights>(nId));
         }
+    }
+}
+
+template <bool hasWeights, typename L>
+void Hypergraph::parallelForNodesInRandomOrderImpl(L handle) const {
+    std::vector<node> randVec;
+    randVec.reserve(numberOfNodes());
+    forNodes([&](node u) { randVec.push_back(u); });
+    std::shuffle(randVec.begin(), randVec.end(), Aux::Random::getURNG());
+#pragma omp parallel for
+    for (omp_index nId = 0; nId < static_cast<omp_index>(randVec.size()); ++nId) {
+        nodeLambda<L>(handle, randVec[nId], nodeWeightIteratorHelper<hasWeights>(randVec[nId]));
     }
 }
 

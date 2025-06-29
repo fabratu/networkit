@@ -55,8 +55,8 @@ Hypergraph HMETISGraphReader::read(std::string_view path) {
         throw std::runtime_error("Invalid header format in file: " + std::string(path));
     }
 
-    count n = std::stoul(parts[0]);
-    count m = std::stoul(parts[1]);
+    count n = std::stoul(parts[1]);
+    count m = std::stoul(parts[0]);
 
     Hypergraph hGraph(n, 0);
 

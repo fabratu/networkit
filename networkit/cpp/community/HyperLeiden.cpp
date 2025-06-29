@@ -99,21 +99,21 @@ void HyperLeiden::run() {
                  currentG.numberOfEdges(), " edges.");
 
             // Print all hyperedges of the graph
-            INFO("Printing all hyperedges of the graph:");
-            currentG.forEdges([&](edgeid eId) {
-                auto nodes = currentG.nodesOf(eId);
-                std::string edgeStr = "Edge " + std::to_string(eId) + ": {";
-                bool first = true;
-                for (const auto &nodePair : nodes) {
-                    if (!first)
-                        edgeStr += ", ";
-                    edgeStr += std::to_string(nodePair.first)
-                               + "(w=" + std::to_string(nodePair.second) + ")";
-                    first = false;
-                }
-                edgeStr += "}";
-                INFO(edgeStr);
-            });
+            // INFO("Printing all hyperedges of the graph:");
+            // currentG.forEdges([&](edgeid eId) {
+            //     auto nodes = currentG.nodesOf(eId);
+            //     std::string edgeStr = "Edge " + std::to_string(eId) + ": {";
+            //     bool first = true;
+            //     for (const auto &nodePair : nodes) {
+            //         if (!first)
+            //             edgeStr += ", ";
+            //         edgeStr += std::to_string(nodePair.first)
+            //                    + "(w=" + std::to_string(nodePair.second) + ")";
+            //         first = false;
+            //     }
+            //     edgeStr += "}";
+            //     INFO(edgeStr);
+            // });
             // Create mapping
             mappings.push_back(createMapping(communityMemberships, communitySizes));
             isFirst = false;
@@ -154,26 +154,26 @@ void HyperLeiden::run() {
                  currentG.numberOfEdges(), " edges.");
 
             // Print all hyperedges of the graph
-            INFO("Printing all hyperedges of the graph:");
-            currentG.forEdges([&](edgeid eId) {
-                auto nodes = currentG.nodesOf(eId);
-                std::string edgeStr = "Edge " + std::to_string(eId) + ": {";
-                bool first = true;
-                for (const auto &nodePair : nodes) {
-                    if (!first)
-                        edgeStr += ", ";
-                    edgeStr += std::to_string(nodePair.first)
-                               + "(w=" + std::to_string(nodePair.second) + ")";
-                    first = false;
-                }
-                edgeStr += "}";
-                INFO(edgeStr);
-            });
+            // INFO("Printing all hyperedges of the graph:");
+            // currentG.forEdges([&](edgeid eId) {
+            //     auto nodes = currentG.nodesOf(eId);
+            //     std::string edgeStr = "Edge " + std::to_string(eId) + ": {";
+            //     bool first = true;
+            //     for (const auto &nodePair : nodes) {
+            //         if (!first)
+            //             edgeStr += ", ";
+            //         edgeStr += std::to_string(nodePair.first)
+            //                    + "(w=" + std::to_string(nodePair.second) + ")";
+            //         first = false;
+            //     }
+            //     edgeStr += "}";
+            //     INFO(edgeStr);
+            // });
 
             // Create mapping
             mappings.push_back(createMapping(communityMemberships, communitySizes));
-            INFO("Created mapping for pass ", pass, ": ", Aux::toString(mappings.back()));
-            if (currentG.numberOfNodes() == lastNumberOfNodes || currentG.numberOfNodes() <= 2) {
+            INFO("Created mapping for pass ", pass);
+            if (currentG.numberOfNodes() == lastNumberOfNodes || currentG.numberOfNodes() <= 4) {
                 INFO("Stopping early, no further aggregation possible.");
                 break;
             }
@@ -182,7 +182,7 @@ void HyperLeiden::run() {
     }
 
     // TODO: unroll mappings to get final community memberships
-    INFO("Final mappings: ", Aux::toString(mappings));
+    // INFO("Final mappings: ", Aux::toString(mappings));
     flattenPartition();
 
     hasRun = true;
@@ -193,16 +193,18 @@ void HyperLeiden::greedyMovePhase(const Hypergraph &graph, std::vector<count> &c
                                   std::vector<Aux::ParallelHashMap> &edgeCommunityMemberships,
                                   std::vector<Aux::ParallelHashMap> &edgeCommunityVolumes) {
 
-    count maxIter = 100;
+    count maxIter = 1000;
     count rho_total = graph.edgeVolume();
 
     std::vector<bool> vaff(graph.numberOfNodes(), true);
     double gainPerRound = 0;
+    double lastGain = 0.0;
 
     for (count l = 0; l < maxIter; l++) {
         auto start = std::chrono::high_resolution_clock::now();
         gainPerRound = 0.0;
-        graph.parallelForNodes([&](node u) {
+
+        graph.parallelForNodesInRandomOrder([&](node u) {
             if (!vaff[u])
                 return;
             vaff[u] = false;
@@ -211,8 +213,8 @@ void HyperLeiden::greedyMovePhase(const Hypergraph &graph, std::vector<count> &c
                                  edgeCommunityMemberships, edgeCommunityVolumes);
 
             if (bestCommunity != communityMemberships[u] && gain > 0) {
-                INFO("Node ", u, " moves to community ", bestCommunity, " with gain ", gain,
-                     " in round ", l);
+                // INFO("Node ", u, " moves to community ", bestCommunity, " with gain ", gain,
+                //      " in round ", l);
                 updateMemberships(graph, u, bestCommunity, communityMemberships, communitySizes,
                                   edgeCommunityMemberships, edgeCommunityVolumes);
 
@@ -237,9 +239,11 @@ void HyperLeiden::greedyMovePhase(const Hypergraph &graph, std::vector<count> &c
             std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count() / 1000.0;
         INFO("Greedy move phase time for round ", l, ": ", duration, " seconds");
         INFO("Gain in round ", l, ": ", gainPerRound);
-        if (gainPerRound < tolerance) {
+        if (gainPerRound < tolerance || gainPerRound <= lastGain) {
+            INFO("Stopping greedy move phase");
             break;
         }
+        lastGain = gainPerRound;
     }
 };
 
@@ -255,7 +259,7 @@ void HyperLeiden::refineDisconnected(const Hypergraph &graph,
 
     std::vector<bool> vaff(graph.numberOfNodes(), true);
     for (count l = 0; l < maxIter; l++) {
-        graph.parallelForNodes([&](node u) {
+        graph.parallelForNodesInRandomOrder([&](node u) {
             if (!vaff[u])
                 return;
             if (communitySizes[communityMemberships[u]] != 1) // Only perform for isolated nodes
@@ -285,8 +289,9 @@ Hypergraph HyperLeiden::aggregateHypergraph(const Hypergraph &graph,
 
     // Renumber communities based on prefix sum
     count numCommunities = renumberCommunities(communityMemberships, communitySizes);
-    INFO("Renumbered communities: ", Aux::toString(communityMemberships));
-    INFO("Community sizes: ", Aux::toString(communitySizes));
+    // INFO("Renumbered communities: ", Aux::toString(communityMemberships));
+    // INFO("Community sizes: ", Aux::toString(communitySizes));
+    INFO("Number of communities after renumbering: ", numCommunities);
 
     // Create new hypergraph with number of nodes = number of communities
     Hypergraph aggHypergraph(numCommunities, 0, true);
@@ -352,14 +357,15 @@ Hypergraph HyperLeiden::aggregateHypergraph(const Hypergraph &graph,
                 // If this is the first singleton edge for this community, add it
                 singletonDatabase[indicatorCommunity] =
                     aggHypergraph.addEdge({indicatorCommunity}, false, {indicatorWeight});
-                INFO("Adding singleton edge with community ", indicatorCommunity, " and weight ",
-                     indicatorWeight, " for edge id: ", eId,
-                     " new edge id: ", singletonDatabase[indicatorCommunity]);
+                // INFO("Adding singleton edge with community ", indicatorCommunity, " and weight ",
+                //      indicatorWeight, " for edge id: ", eId,
+                //      " new edge id: ", singletonDatabase[indicatorCommunity]);
 
             } else {
-                INFO("Updating singleton edge with community ", indicatorCommunity, " and weight ",
-                     indicatorWeight, " for edge id: ", eId,
-                     " new edge id: ", singletonDatabase[indicatorCommunity]);
+                // INFO("Updating singleton edge with community ", indicatorCommunity, " and weight
+                // ",
+                //      indicatorWeight, " for edge id: ", eId,
+                //      " new edge id: ", singletonDatabase[indicatorCommunity]);
                 // If already exists, update the weight
                 aggHypergraph.updateNodeWeightOf(
                     indicatorCommunity, singletonDatabase[indicatorCommunity], indicatorWeight);
@@ -383,26 +389,26 @@ Hypergraph HyperLeiden::aggregateHypergraph(const Hypergraph &graph,
     });
     INFO("After singleton the graph has ", aggHypergraph.numberOfNodes(), " nodes and ",
          aggHypergraph.numberOfEdges(), " edges.");
-    INFO("Singleton edges in the database: ", Aux::toString(singletonDatabase));
-    INFO("Each singleton edge has node id and weight: ");
-    aggHypergraph.forEdges([&](edgeid eId) {
-        auto nodes = aggHypergraph.nodesOf(eId);
-        std::string edgeStr = "Edge " + std::to_string(eId) + ": {";
-        bool first = true;
-        for (const auto &nodeEntry : nodes) {
-            if (!first)
-                edgeStr += ", ";
-            edgeStr +=
-                std::to_string(nodeEntry.first) + "(w=" + std::to_string(nodeEntry.second) + ")";
-            first = false;
-        }
-        edgeStr += "}";
-        INFO(edgeStr);
-    });
+    // INFO("Singleton edges in the database: ", Aux::toString(singletonDatabase));
+    // INFO("Each singleton edge has node id and weight: ");
+    // aggHypergraph.forEdges([&](edgeid eId) {
+    //     auto nodes = aggHypergraph.nodesOf(eId);
+    //     std::string edgeStr = "Edge " + std::to_string(eId) + ": {";
+    //     bool first = true;
+    //     for (const auto &nodeEntry : nodes) {
+    //         if (!first)
+    //             edgeStr += ", ";
+    //         edgeStr +=
+    //             std::to_string(nodeEntry.first) + "(w=" + std::to_string(nodeEntry.second) + ")";
+    //         first = false;
+    //     }
+    //     edgeStr += "}";
+    //     INFO(edgeStr);
+    // });
     INFO("Hash database has ", hashDatabase.size(), " entries.");
     for (const auto &entry : hashDatabase) {
-        INFO("Processing hash entry with community bits: ", Aux::toString(entry.first),
-             " and edges: ", Aux::toString(entry.second));
+        // INFO("Processing hash entry with community bits: ", Aux::toString(entry.first),
+        //      " and edges: ", Aux::toString(entry.second));
         // Add edge to hypergraph
         edgeid newEdge = aggHypergraph.addEdge(convertBitsToNodes(entry.first));
         auto edgeNodes = aggHypergraph.nodesOf(newEdge);
@@ -647,8 +653,8 @@ count HyperLeiden::renumberCommunities(std::vector<count> &communityMemberships,
                                        std::vector<count> &communitySizes) {
     // Renumber communities based on prefix sum. This effectively destroys the old
     // information in communitySizes.
-    INFO("Community memberships before renumbering: ", Aux::toString(communityMemberships));
-    INFO("Community sizes before renumbering: ", Aux::toString(communitySizes));
+    // INFO("Community memberships before renumbering: ", Aux::toString(communityMemberships));
+    // INFO("Community sizes before renumbering: ", Aux::toString(communitySizes));
     count numCommunities = 0;
     for (size_t i = 0; i < communitySizes.size(); i++) {
         count entry = communitySizes[i];

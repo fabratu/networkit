@@ -262,14 +262,46 @@ TEST_F(HypergraphCommunityGTest, testHMETISReader) {
 }
 
 TEST_F(HypergraphCommunityGTest, testHyperLeidenFromFile) {
+    Aux::Log::setLogLevel("INFO");
+    Aux::setNumberOfThreads(1); // Set number of threads to 1 for reproducibility
+                                // Test HyperLeiden on a hypergraph read from a file
+                                // std::string path = "input/ibm01.hypergraph";
+                                // std::string path = "input/contact-highschool.hypergraph";
+                                // std::string path = "input/3000_he.hypergraph";
+    std::string path = "input/300_he.hypergraph";
+    HMETISGraphReader hmetisReader(1);
 
-    // Aux::setNumberOfThreads(1); // Set number of threads to 1 for reproducibility
-    // Test HyperLeiden on a hypergraph read from a file
-    // std::string path = "input/ibm01.hypergraph";
-    // std::string path = "input/3000_he.hypergraph";
-    // HMETISGraphReader hmetisReader;
+    Hypergraph hg = hmetisReader.read(path);
+    // INFO("Hypergraph has ", hg.numberOfNodes(), " nodes and ", hg.numberOfEdges(), " edges.");
+    // INFO("Printing final hypergraph:");
+    // hg.forNodes([&](node u) {
+    //     auto edges = hg.edgesOf(u);
+    //     std::string nodeStr = "Node " + std::to_string(u) + ": {";
+    //     bool first = true;
+    //     for (const auto &eId : edges) {
+    //         if (!first)
+    //             nodeStr += ", ";
+    //         nodeStr += std::to_string(eId) + "(w=" + std::to_string(hg.getNodeWeight(u)) + ")";
+    //         first = false;
+    //     }
+    //     nodeStr += "}";
+    //     INFO(nodeStr);
+    // });
 
-    // Hypergraph hg = hmetisReader.read(path);
+    // hg.forEdges([&](edgeid eId) {
+    //     auto nodes = hg.nodesOf(eId);
+    //     std::string edgeStr = "Edge " + std::to_string(eId) + ": {";
+    //     bool first = true;
+    //     for (const auto &nodePair : nodes) {
+    //         if (!first)
+    //             edgeStr += ", ";
+    //         edgeStr +=
+    //             std::to_string(nodePair.first) + "(w=" + std::to_string(nodePair.second) + ")";
+    //         first = false;
+    //     }
+    //     edgeStr += "}";
+    //     INFO(edgeStr);
+    // });
 
     Hypergraph hg2 = Hypergraph(15, 0, true);
     // e_0
@@ -301,15 +333,19 @@ TEST_F(HypergraphCommunityGTest, testHyperLeidenFromFile) {
 
     for (auto gamma :
          {0.1, 0.2, 0.3, 0.4, 0.5, 0.55, 0.6, 0.65, 0.7, 0.75, 0.8, 0.85, 0.9, 0.95, 1.0}) {
-        Aux::Log::setLogLevel("INFO");
-        HyperLeiden pl(hg2, 1, gamma);
+
+        // HyperLeiden pl(hg2, 1, gamma);
+        HyperLeiden pl(hg, 5, gamma);
         pl.run();
 
         Partition zeta = pl.getPartition();
-        INFO("Partition with gamma = ", gamma, ": ", Aux::toString(zeta.getVector()));
+        INFO(Aux::toString(zeta.getSubsets()));
+        // INFO("Partition with gamma = ", gamma, ": ", Aux::toString(zeta.getVector()));
         Modularity mod;
-        auto quality = mod.getQualityHypergraph(zeta, hg2);
+        auto quality = mod.getQualityHypergraph(zeta, hg);
+
         INFO("Modularity quality of initial partition: ", quality, " with gamma = ", gamma);
+        // Aux::Log::setLogLevel("QUIET");
     }
 
     // Aux::Log::setLogLevel("INFO");
