@@ -46,6 +46,9 @@ void HyperLeiden::run() {
             start = std::chrono::high_resolution_clock::now();
             greedyMovePhase(*G, communityMemberships, communitySizes, edgeCommunityMemberships,
                             edgeCommunityVolumes);
+            // greedyMovePhaseEdges(*G, communityMemberships, communitySizes,
+            // edgeCommunityMemberships,
+            //                      edgeCommunityVolumes);
             end = std::chrono::high_resolution_clock::now();
             duration =
                 std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count() / 1000.0;
@@ -90,13 +93,15 @@ void HyperLeiden::run() {
             // exit(0);
             // Aggregate hypergraph
             start = std::chrono::high_resolution_clock::now();
-            currentG = aggregateHypergraph(*G, communityMemberships, communitySizes);
+            currentG = aggregateHypergraph(*G, communityMemberships, communitySizes,
+                                           edgeCommunityMemberships, edgeCommunityVolumes);
             end = std::chrono::high_resolution_clock::now();
             duration =
                 std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count() / 1000.0;
             INFO("Aggregation time: ", duration, " seconds");
             INFO("Graph after first pass has ", currentG.numberOfNodes(), " nodes and ",
                  currentG.numberOfEdges(), " edges.");
+            INFO("Graph has total edge volume: ", currentG.weightedEdgeVolume());
 
             // Print all hyperedges of the graph
             // INFO("Printing all hyperedges of the graph:");
@@ -135,6 +140,8 @@ void HyperLeiden::run() {
             // Greedy Move Phase
             greedyMovePhase(currentG, communityMemberships, communitySizes,
                             edgeCommunityMemberships, edgeCommunityVolumes);
+            // greedyMovePhaseEdges(currentG, communityMemberships, communitySizes,
+            //                      edgeCommunityMemberships, edgeCommunityVolumes);
 
             // Refine disconnected communities
             if (refinementStrategy == RefinementStrategy::DISCONNECTED) {
@@ -149,9 +156,11 @@ void HyperLeiden::run() {
             }
 
             // Aggregate hypergraph
-            currentG = aggregateHypergraph(currentG, communityMemberships, communitySizes);
+            currentG = aggregateHypergraph(currentG, communityMemberships, communitySizes,
+                                           edgeCommunityMemberships, edgeCommunityVolumes);
             INFO("Graph after current pass has ", currentG.numberOfNodes(), " nodes and ",
                  currentG.numberOfEdges(), " edges.");
+            INFO("Graph has total edge volume: ", currentG.weightedEdgeVolume());
 
             // Print all hyperedges of the graph
             // INFO("Printing all hyperedges of the graph:");
@@ -247,6 +256,67 @@ void HyperLeiden::greedyMovePhase(const Hypergraph &graph, std::vector<count> &c
     }
 };
 
+void HyperLeiden::greedyMovePhaseEdges(const Hypergraph &graph,
+                                       std::vector<count> &communityMemberships,
+                                       std::vector<count> &communitySizes,
+                                       std::vector<Aux::ParallelHashMap> &edgeCommunityMemberships,
+                                       std::vector<Aux::ParallelHashMap> &edgeCommunityVolumes) {
+
+    count maxIter = 1000;
+    count rho_total = graph.edgeVolume();
+
+    double gainPerRound = 0;
+    double lastGain = 0.0;
+    double bestGain = 0.0;
+
+    for (count l = 0; l < maxIter; l++) {
+        auto start = std::chrono::high_resolution_clock::now();
+        gainPerRound = 0.0;
+
+        graph.forEdges([&](edgeid eId) {
+            node v = 0;
+            node newCommunity = 0;
+
+            // INFO("Processing edge ", eId);
+            auto nodes = graph.nodesOf(eId);
+            for (const auto &nodePair : nodes) {
+                node u = nodePair.first;
+                auto [bestCommunity, gain] =
+                    getBestCommunity(graph, u, rho_total, communityMemberships, communitySizes,
+                                     edgeCommunityMemberships, edgeCommunityVolumes);
+
+                if (bestCommunity != communityMemberships[u] && gain > bestGain) {
+                    newCommunity = bestCommunity;
+                    bestGain = gain;
+                    v = u;
+                }
+                // INFO("Node ", u, " moves to community ", bestCommunity, " with gain ",
+                //      gain, " in round ", l);
+            }
+            if (bestGain > 0) {
+                // INFO("Node ", v, " moves to community ", newCommunity, " with gain ", bestGain,
+                //      " in round ", l);
+                updateMemberships(graph, v, newCommunity, communityMemberships, communitySizes,
+                                  edgeCommunityMemberships, edgeCommunityVolumes);
+                gainPerRound += bestGain;
+                // INFO("Node ", u, " moved to community ", bestCommunity, " with gain ", gain);
+            }
+            bestGain = 0.0; // Reset best gain for the next edge
+        });
+
+        auto end = std::chrono::high_resolution_clock::now();
+        double duration =
+            std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count() / 1000.0;
+        INFO("Greedy move phase time for round ", l, ": ", duration, " seconds");
+        INFO("Gain in round ", l, ": ", gainPerRound);
+        if (gainPerRound < tolerance || gainPerRound <= lastGain) {
+            INFO("Stopping greedy move phase");
+            break;
+        }
+        lastGain = gainPerRound;
+    }
+};
+
 void HyperLeiden::refineDisconnected(const Hypergraph &graph,
                                      std::vector<count> &communityMemberships,
                                      std::vector<count> &communitySizes,
@@ -257,7 +327,7 @@ void HyperLeiden::refineDisconnected(const Hypergraph &graph,
     count maxIter = 100;
     count rho_total = graph.edgeVolume();
 
-    std::vector<bool> vaff(graph.numberOfNodes(), true);
+        std::vector<bool> vaff(graph.numberOfNodes(), true);
     for (count l = 0; l < maxIter; l++) {
         graph.parallelForNodesInRandomOrder([&](node u) {
             if (!vaff[u])
@@ -283,9 +353,11 @@ void HyperLeiden::refineDisconnected(const Hypergraph &graph,
     }
 };
 
-Hypergraph HyperLeiden::aggregateHypergraph(const Hypergraph &graph,
-                                            std::vector<count> &communityMemberships,
-                                            std::vector<count> &communitySizes) {
+Hypergraph
+HyperLeiden::aggregateHypergraph(const Hypergraph &graph, std::vector<count> &communityMemberships,
+                                 std::vector<count> &communitySizes,
+                                 std::vector<Aux::ParallelHashMap> &edgeCommunityMemberships,
+                                 std::vector<Aux::ParallelHashMap> &edgeCommunityVolumes) {
 
     // Renumber communities based on prefix sum
     count numCommunities = renumberCommunities(communityMemberships, communitySizes);
@@ -322,6 +394,18 @@ Hypergraph HyperLeiden::aggregateHypergraph(const Hypergraph &graph,
         return nodesInEdge;
     };
 
+    auto checkForContribution = [&](edgeid eId) {
+        auto handle = edgeCommunityVolumes[eId].makeHandle();
+        auto edgeVolume = graph.weightedEdgeVolume(eId);
+        for (const auto &[key, value] : handle.hashtable()) {
+            if (value > 0.5 * edgeVolume) {
+                return communityMemberships[key]; // If any community has more than 50% of the edge
+                                                  // volume, contribute
+            }
+        }
+        return none;
+    };
+
     // std::unordered_map<std::vector<bool>, std::vector<edgeid>> hashDatabase;
     std::unordered_map<std::vector<bool>, std::vector<edgeid>, CustomHasher> hashDatabase;
     std::vector<edgeid> singletonDatabase(numCommunities, std::numeric_limits<edgeid>::max());
@@ -350,19 +434,28 @@ Hypergraph HyperLeiden::aggregateHypergraph(const Hypergraph &graph,
             indicatorWeight += node.second;                         // Sum the weights of the nodes
         }
 
-        if (isSingletonEdge) {
+        if (isSingletonEdge || (indicatorCommunity = checkForContribution(eId)) != none) {
+            // if (!isSingletonEdge) {
+            //     // If edge is not a singleton but contributes to a community, we still treat it
+            //     as
+            //     // a singleton edge for that community
+            //     INFO("Majority: ", eId, " contributes to community ", indicatorCommunity,
+            //          " with weight ", indicatorWeight);
+            // }
             // If singleton edge, add to new hypergraph or update weight
             if (singletonDatabase[indicatorCommunity] == std::numeric_limits<edgeid>::max()) {
 
                 // If this is the first singleton edge for this community, add it
                 singletonDatabase[indicatorCommunity] =
                     aggHypergraph.addEdge({indicatorCommunity}, false, {indicatorWeight});
-                // INFO("Adding singleton edge with community ", indicatorCommunity, " and weight ",
+                // INFO("Adding singleton edge with community ", indicatorCommunity, " and
+                // weight ",
                 //      indicatorWeight, " for edge id: ", eId,
                 //      " new edge id: ", singletonDatabase[indicatorCommunity]);
 
             } else {
-                // INFO("Updating singleton edge with community ", indicatorCommunity, " and weight
+                // INFO("Updating singleton edge with community ", indicatorCommunity, " and
+                // weight
                 // ",
                 //      indicatorWeight, " for edge id: ", eId,
                 //      " new edge id: ", singletonDatabase[indicatorCommunity]);
@@ -371,7 +464,7 @@ Hypergraph HyperLeiden::aggregateHypergraph(const Hypergraph &graph,
                     indicatorCommunity, singletonDatabase[indicatorCommunity], indicatorWeight);
             }
         } else {
-            // If not singleton, create a hash of the community bits
+            // If not singleton or contribution based, create a hash of the community bits
             auto it = hashDatabase.find(communityBits);
             if (it == hashDatabase.end()) {
                 // auto communityHash = std::hash<std::vector<bool>>{}(communityBits);
@@ -399,7 +492,8 @@ Hypergraph HyperLeiden::aggregateHypergraph(const Hypergraph &graph,
     //         if (!first)
     //             edgeStr += ", ";
     //         edgeStr +=
-    //             std::to_string(nodeEntry.first) + "(w=" + std::to_string(nodeEntry.second) + ")";
+    //             std::to_string(nodeEntry.first) + "(w=" + std::to_string(nodeEntry.second) +
+    //             ")";
     //         first = false;
     //     }
     //     edgeStr += "}";
@@ -586,8 +680,9 @@ double HyperLeiden::deltaHCPM(const Hypergraph &graph, node v, count rho_total, 
             // int64_t left = static_cast<int64_t>(1 << c2eSize);
             // int64_t right = static_cast<int64_t>(1 << (c1eSize - 1));
 
-            double eVolume = static_cast<double>(graph.edgeVolume(eId));
+            // double eVolume = static_cast<double>(graph.weightedEdgeVolume(eId));
             // double eFactor = eVolume * (left - right);
+
             double eFactor = (left - right);
 
             delta_e += eFactor;
@@ -635,6 +730,7 @@ double HyperLeiden::deltaHCPM(const Hypergraph &graph, node v, count rho_total, 
         // });
     }
     // INFO("Node ", v, " delta_e: ", delta_e, " for communities ", c1, " and ", c2);
+    // return delta_e / static_cast<double>(rho_total) - delta_n;
     return delta_e / static_cast<double>(numEdges) - delta_n;
 };
 

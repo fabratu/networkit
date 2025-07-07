@@ -331,21 +331,34 @@ TEST_F(HypergraphCommunityGTest, testHyperLeidenFromFile) {
     // e_12
     hg2.addEdge({0, 8}, true);
 
-    for (auto gamma :
-         {0.1, 0.2, 0.3, 0.4, 0.5, 0.55, 0.6, 0.65, 0.7, 0.75, 0.8, 0.85, 0.9, 0.95, 1.0}) {
+    Partition flattenedPartition(hg.numberOfNodes());
+    flattenedPartition.setUpperBound(hg.numberOfNodes());
+    hg.forNodes([&](node u) { flattenedPartition[u] = u; });
 
-        // HyperLeiden pl(hg2, 1, gamma);
-        HyperLeiden pl(hg, 5, gamma);
+    Modularity mod;
+    auto quality = mod.getQualityHypergraph(flattenedPartition, hg);
+
+    INFO("Modularity quality of initial partition: ", quality);
+
+    INFO("Running HyperLeiden on hypergraph with ", hg.numberOfNodes(), " nodes and ",
+         hg.numberOfEdges(), " edges.");
+    INFO("Graph has total edge volume: ", hg.weightedEdgeVolume());
+    // Aux::Log::setLogLevel("QUIET");
+
+    for (auto gamma : {0.6, 0.65, 0.7, 0.75, 0.8, 0.85, 0.9, 0.95, 1.0}) {
+        // ,0.1, 0.2, 0.3, 0.4, 0.5, 0.55,  0.9, 0.95
+        //  HyperLeiden pl(hg2, 1, gamma);
+        HyperLeiden pl(hg, 5, gamma, 0.00001);
+        for (size_t i = 0; i < 50; ++i) {
+            pl.run();
+            Partition zeta = pl.getPartition();
+            INFO(Aux::toString(zeta.getSubsets()));
+            // INFO("Partition with gamma = ", gamma, ": ", Aux::toString(zeta.getVector()));
+            Modularity mod;
+            auto quality = mod.getQualityHypergraph(zeta, hg, gamma, 1);
+            INFO("Modularity quality of partition: ", quality, " with gamma = ", gamma);
+        }
         pl.run();
-
-        Partition zeta = pl.getPartition();
-        INFO(Aux::toString(zeta.getSubsets()));
-        // INFO("Partition with gamma = ", gamma, ": ", Aux::toString(zeta.getVector()));
-        Modularity mod;
-        auto quality = mod.getQualityHypergraph(zeta, hg);
-
-        INFO("Modularity quality of initial partition: ", quality, " with gamma = ", gamma);
-        // Aux::Log::setLogLevel("QUIET");
     }
 
     // Aux::Log::setLogLevel("INFO");

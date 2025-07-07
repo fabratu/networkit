@@ -218,11 +218,39 @@ public:
     }
 
     /**
+     * Return the hypergraph edge volume, i.e., the number of edges scaled by the weighted number of
+     * incident nodes.
+     * @return The hypergraph edge volume.
+     */
+    count weightedEdgeVolume() const noexcept {
+        count volume = 0;
+        for (edgeid eId = 0; eId < nextEdgeId; ++eId) {
+            if (edgeExists[eId]) {
+                volume += weightedEdgeVolume(eId);
+            }
+        }
+        return volume;
+    }
+
+    /**
      * Return the hypergraph edge volume, i.e., the number of nodes in a hyperedge.
      * @param eid The edge id.
      * @return The edge volume of the given hyperedge.
      */
     count edgeVolume(edgeid eid) const noexcept { return edgeIncidence[eid].size(); }
+
+    /**
+     * Return the hypergraph edge volume, i.e., the number of nodes in a hyperedge.
+     * @param eid The edge id.
+     * @return The edge volume of the given hyperedge.
+     */
+    count weightedEdgeVolume(edgeid eid) const noexcept {
+        nodeweight order = 0;
+        for (const auto &node : edgeIncidence[eid]) {
+            order += node.second;
+        }
+        return order;
+    }
 
     /* NODE PROPERTIES & MODIFIERS */
 
@@ -455,19 +483,19 @@ public:
      */
     count order(edgeid eid) const { return edgeIncidence[eid].size(); }
 
-    /**
-     * Return the weighted order of a given edge.
-     *
-     * @param eid The edge id.
-     * @return edgeweight
-     */
-    nodeweight weightedOrder(edgeid eid) const {
-        nodeweight order = 0;
-        for (const auto &node : edgeIncidence[eid]) {
-            order += node.second;
-        }
-        return order;
-    }
+    // /**
+    //  * Return the weighted order of a given edge.
+    //  *
+    //  * @param eid The edge id.
+    //  * @return edgeweight
+    //  */
+    // nodeweight weightedOrder(edgeid eid) const {
+    //     nodeweight order = 0;
+    //     for (const auto &node : edgeIncidence[eid]) {
+    //         order += node.second;
+    //     }
+    //     return order;
+    // }
 
     /**
      * Returns map of node members of an hyperedge

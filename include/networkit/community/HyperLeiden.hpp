@@ -61,6 +61,11 @@ private:
                          std::vector<Aux::ParallelHashMap> &edgeCommunityMemberships,
                          std::vector<Aux::ParallelHashMap> &edgeCommunityVolumes);
 
+    void greedyMovePhaseEdges(const Hypergraph &graph, std::vector<count> &communityMemberships,
+                              std::vector<count> &communitySizes,
+                              std::vector<Aux::ParallelHashMap> &edgeCommunityMemberships,
+                              std::vector<Aux::ParallelHashMap> &edgeCommunityVolumes);
+
     void refineDisconnected(const Hypergraph &graph, std::vector<count> &communityMemberships,
                             std::vector<count> &communitySizes,
                             std::vector<Aux::ParallelHashMap> &edgeCommunityMemberships,
@@ -69,7 +74,9 @@ private:
 
     Hypergraph aggregateHypergraph(const Hypergraph &graph,
                                    std::vector<count> &communityMemberships,
-                                   std::vector<count> &communitySizes);
+                                   std::vector<count> &communitySizes,
+                                   std::vector<Aux::ParallelHashMap> &edgeCommunityMemberships,
+                                   std::vector<Aux::ParallelHashMap> &edgeCommunityVolumes);
 
     std::vector<node> createMapping(const std::vector<count> &communityMemberships,
                                     const std::vector<count> &communitySizes) const;
