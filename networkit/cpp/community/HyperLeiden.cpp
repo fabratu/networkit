@@ -93,8 +93,9 @@ void HyperLeiden::run() {
             // exit(0);
             // Aggregate hypergraph
             start = std::chrono::high_resolution_clock::now();
-            currentG = aggregateHypergraph(*G, communityMemberships, communitySizes,
-                                           edgeCommunityMemberships, edgeCommunityVolumes);
+            currentG = aggregateHypergraphWithoutBitSimilarity(
+                *G, communityMemberships, communitySizes, edgeCommunityMemberships,
+                edgeCommunityVolumes);
             end = std::chrono::high_resolution_clock::now();
             duration =
                 std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count() / 1000.0;
@@ -156,8 +157,9 @@ void HyperLeiden::run() {
             }
 
             // Aggregate hypergraph
-            currentG = aggregateHypergraph(currentG, communityMemberships, communitySizes,
-                                           edgeCommunityMemberships, edgeCommunityVolumes);
+            currentG = aggregateHypergraphWithoutBitSimilarity(
+                currentG, communityMemberships, communitySizes, edgeCommunityMemberships,
+                edgeCommunityVolumes);
             INFO("Graph after current pass has ", currentG.numberOfNodes(), " nodes and ",
                  currentG.numberOfEdges(), " edges.");
             INFO("Graph has total edge volume: ", currentG.weightedEdgeVolume());
@@ -327,7 +329,7 @@ void HyperLeiden::refineDisconnected(const Hypergraph &graph,
     count maxIter = 100;
     count rho_total = graph.edgeVolume();
 
-        std::vector<bool> vaff(graph.numberOfNodes(), true);
+    std::vector<bool> vaff(graph.numberOfNodes(), true);
     for (count l = 0; l < maxIter; l++) {
         graph.parallelForNodesInRandomOrder([&](node u) {
             if (!vaff[u])
@@ -512,6 +514,174 @@ HyperLeiden::aggregateHypergraph(const Hypergraph &graph, std::vector<count> &co
         // Gather weights from the edges in the hash database
         for (const auto edgeId : entry.second) {
             auto edgeNodes = graph.nodesOf(edgeId);
+            for (const auto &nodeEntry : edgeNodes) {
+                aggHypergraph.updateNodeWeightOf(communityMemberships[nodeEntry.first], newEdge,
+                                                 nodeEntry.second);
+            }
+        }
+    }
+    return aggHypergraph;
+}
+
+Hypergraph HyperLeiden::aggregateHypergraphWithoutBitSimilarity(
+    const Hypergraph &graph, std::vector<count> &communityMemberships,
+    std::vector<count> &communitySizes, std::vector<Aux::ParallelHashMap> &edgeCommunityMemberships,
+    std::vector<Aux::ParallelHashMap> &edgeCommunityVolumes) {
+
+    // Renumber communities based on prefix sum
+    count numCommunities = renumberCommunities(communityMemberships, communitySizes);
+    // INFO("Renumbered communities: ", Aux::toString(communityMemberships));
+    // INFO("Community sizes: ", Aux::toString(communitySizes));
+    INFO("Number of communities after renumbering: ", numCommunities);
+
+    // Create new hypergraph with number of nodes = number of communities
+    Hypergraph aggHypergraph(numCommunities, 0, true);
+
+    struct CustomHasher {
+        // noexcept is recommended, but not required
+        std::size_t operator()(const std::vector<bool> &s) const /*noexcept*/
+        {
+            return boost::hash_range(s.begin(), s.end());
+        }
+    };
+
+    // TODO: maybe there is something more efficient here
+    // Iterate over edges of the original hypergraph
+    // For each edge, if singleton, add to new hypergraph and track the community id
+    // (vector of comm ids) For each edge, if not singleton, create hash of sorted
+    // membership vectors (hash combine) and add to a hash database, which maps
+    // set-hashes to edge ids.
+    // For each hash in the hash database, create a new edge in the new hypergraph and add
+    // the corresponding node ids with their combined weights.
+    auto convertBitsToNodes = [&](const std::vector<bool> &communityBits) {
+        std::vector<node> nodesInEdge;
+        for (size_t i = 0; i < communityBits.size(); ++i) {
+            if (communityBits[i]) {
+                nodesInEdge.push_back(i);
+            }
+        }
+        return nodesInEdge;
+    };
+
+    auto checkForContribution = [&](edgeid eId) {
+        auto handle = edgeCommunityVolumes[eId].makeHandle();
+        auto edgeVolume = graph.weightedEdgeVolume(eId);
+        for (const auto &[key, value] : handle.hashtable()) {
+            if (value > 0.5 * edgeVolume) {
+                return communityMemberships[key]; // If any community has more than 50% of the edge
+                                                  // volume, contribute
+            }
+        }
+        return none;
+    };
+
+    // std::unordered_map<std::vector<bool>, std::vector<edgeid>> hashDatabase;
+    std::unordered_map<std::vector<bool>, std::vector<edgeid>, CustomHasher> hashDatabase;
+    std::vector<edgeid> singletonDatabase(numCommunities, std::numeric_limits<edgeid>::max());
+
+    INFO("Starting aggregation of hypergraph with ", aggHypergraph.numberOfNodes(), " nodes and ",
+         aggHypergraph.numberOfEdges(), " edges.");
+
+    graph.forEdges([&](edgeid eId) {
+        if (graph.order(eId) == 0) {
+            return; // Skip empty edges
+        }
+
+        auto nodes = graph.nodesOf(eId);
+        bool isSingletonEdge = true;
+
+        count indicatorCommunity =
+            communityMemberships[nodes.begin()->first]; // Get the first node's community id
+        nodeweight indicatorWeight = 0.0;
+        std::vector<bool> communityBits(numCommunities, false);
+
+        for (const auto &node : nodes) {
+            if (isSingletonEdge && communityMemberships[node.first] != indicatorCommunity) {
+                isSingletonEdge = false; // If any node has a different community id, not singleton
+            }
+            communityBits[communityMemberships[node.first]] = true; // Mark the community bit
+            indicatorWeight += node.second;                         // Sum the weights of the nodes
+        }
+
+        if (isSingletonEdge || (indicatorCommunity = checkForContribution(eId)) != none) {
+            // if (!isSingletonEdge) {
+            //     // If edge is not a singleton but contributes to a community, we still treat it
+            //     as
+            //     // a singleton edge for that community
+            //     INFO("Majority: ", eId, " contributes to community ", indicatorCommunity,
+            //          " with weight ", indicatorWeight);
+            // }
+            // If singleton edge, add to new hypergraph or update weight
+            if (singletonDatabase[indicatorCommunity] == std::numeric_limits<edgeid>::max()) {
+
+                // If this is the first singleton edge for this community, add it
+                singletonDatabase[indicatorCommunity] =
+                    aggHypergraph.addEdge({indicatorCommunity}, false, {indicatorWeight});
+                // INFO("Adding singleton edge with community ", indicatorCommunity, " and
+                // weight ",
+                //      indicatorWeight, " for edge id: ", eId,
+                //      " new edge id: ", singletonDatabase[indicatorCommunity]);
+
+            } else {
+                // INFO("Updating singleton edge with community ", indicatorCommunity, " and
+                // weight
+                // ",
+                //      indicatorWeight, " for edge id: ", eId,
+                //      " new edge id: ", singletonDatabase[indicatorCommunity]);
+                // If already exists, update the weight
+                aggHypergraph.updateNodeWeightOf(
+                    indicatorCommunity, singletonDatabase[indicatorCommunity], indicatorWeight);
+            }
+        } else {
+            // If not singleton or contribution based, create a hash of the community bits
+            auto it = hashDatabase.find(communityBits);
+            if (it == hashDatabase.end()) {
+                // auto communityHash = std::hash<std::vector<bool>>{}(communityBits);
+                // auto communityHash2 = boost::hash_range(
+                //     communityBits.begin(), communityBits.end()); // Combine bits into a hash
+                // INFO("Creating new entry in hash database for community bits: ",
+                //      Aux::toString(communityBits), " with hash: ", communityHash, " and ",
+                //      communityHash2, " for edge id: ", eId);
+                hashDatabase[communityBits] = {eId};
+            } else {
+                // If found, add edge to the entry
+                hashDatabase[communityBits].push_back(eId);
+            }
+        }
+    });
+    INFO("After singleton the graph has ", aggHypergraph.numberOfNodes(), " nodes and ",
+         aggHypergraph.numberOfEdges(), " edges.");
+    // INFO("Singleton edges in the database: ", Aux::toString(singletonDatabase));
+    // INFO("Each singleton edge has node id and weight: ");
+    // aggHypergraph.forEdges([&](edgeid eId) {
+    //     auto nodes = aggHypergraph.nodesOf(eId);
+    //     std::string edgeStr = "Edge " + std::to_string(eId) + ": {";
+    //     bool first = true;
+    //     for (const auto &nodeEntry : nodes) {
+    //         if (!first)
+    //             edgeStr += ", ";
+    //         edgeStr +=
+    //             std::to_string(nodeEntry.first) + "(w=" + std::to_string(nodeEntry.second) +
+    //             ")";
+    //         first = false;
+    //     }
+    //     edgeStr += "}";
+    //     INFO(edgeStr);
+    // });
+    INFO("Hash database has ", hashDatabase.size(), " entries.");
+    for (const auto &entry : hashDatabase) {
+        // INFO("Processing hash entry with community bits: ", Aux::toString(entry.first),
+        //      " and edges: ", Aux::toString(entry.second));
+        // Add edge to hypergraph
+
+        // Gather weights from the edges in the hash database
+        for (const auto edgeId : entry.second) {
+            edgeid newEdge = aggHypergraph.addEdge(convertBitsToNodes(entry.first));
+            auto edgeNodes = aggHypergraph.nodesOf(newEdge);
+            for (const auto &nodeEntry : edgeNodes) {
+                aggHypergraph.setNodeWeightOf(nodeEntry.first, newEdge, 0.0);
+            }
+            edgeNodes = graph.nodesOf(edgeId);
             for (const auto &nodeEntry : edgeNodes) {
                 aggHypergraph.updateNodeWeightOf(communityMemberships[nodeEntry.first], newEdge,
                                                  nodeEntry.second);

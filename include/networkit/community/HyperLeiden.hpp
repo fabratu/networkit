@@ -78,6 +78,12 @@ private:
                                    std::vector<Aux::ParallelHashMap> &edgeCommunityMemberships,
                                    std::vector<Aux::ParallelHashMap> &edgeCommunityVolumes);
 
+    Hypergraph aggregateHypergraphWithoutBitSimilarity(
+        const Hypergraph &graph, std::vector<count> &communityMemberships,
+        std::vector<count> &communitySizes,
+        std::vector<Aux::ParallelHashMap> &edgeCommunityMemberships,
+        std::vector<Aux::ParallelHashMap> &edgeCommunityVolumes);
+
     std::vector<node> createMapping(const std::vector<count> &communityMemberships,
                                     const std::vector<count> &communitySizes) const;
 

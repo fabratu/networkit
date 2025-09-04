@@ -348,7 +348,7 @@ TEST_F(HypergraphCommunityGTest, testHyperLeidenFromFile) {
     for (auto gamma : {0.6, 0.65, 0.7, 0.75, 0.8, 0.85, 0.9, 0.95, 1.0}) {
         // ,0.1, 0.2, 0.3, 0.4, 0.5, 0.55,  0.9, 0.95
         //  HyperLeiden pl(hg2, 1, gamma);
-        HyperLeiden pl(hg, 5, gamma, 0.00001);
+        HyperLeiden pl(hg, 4, gamma, 0.00001);
         for (size_t i = 0; i < 50; ++i) {
             pl.run();
             Partition zeta = pl.getPartition();
