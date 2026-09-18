@@ -134,6 +134,59 @@ TEST_P(HypergraphToolsGTest, testGetIntersectionSize) {
     EXPECT_EQ(HypergraphTools::getIntersectionSize(hGraph, 2, 0), 0);
 }
 
+TEST_P(HypergraphToolsGTest, testComputeSLevelAdjacencyMatrix) {
+    Hypergraph hGraph(6, 0, weighted());
+    hGraph.addEdge({0, 1, 2});
+    hGraph.addEdge({1, 2, 3});
+    hGraph.addEdge({2, 3, 4});
+    hGraph.addEdge({5});
+
+    const CSRMatrix levelZero = HypergraphTools::computeSLevelAdjacencyMatrix(hGraph, 0);
+    EXPECT_EQ(levelZero.nnz(), 12);
+    EXPECT_DOUBLE_EQ(levelZero(0, 3), 1.0);
+    EXPECT_DOUBLE_EQ(levelZero(3, 3), 0.0);
+
+    const CSRMatrix levelOne = HypergraphTools::computeSLevelAdjacencyMatrix(hGraph, 1);
+    EXPECT_EQ(levelOne.numberOfRows(), 4);
+    EXPECT_EQ(levelOne.numberOfColumns(), 4);
+    EXPECT_EQ(levelOne.nnz(), 6);
+    EXPECT_DOUBLE_EQ(levelOne(0, 1), 1.0);
+    EXPECT_DOUBLE_EQ(levelOne(1, 0), 1.0);
+    EXPECT_DOUBLE_EQ(levelOne(0, 2), 1.0);
+    EXPECT_DOUBLE_EQ(levelOne(2, 0), 1.0);
+    EXPECT_DOUBLE_EQ(levelOne(1, 2), 1.0);
+    EXPECT_DOUBLE_EQ(levelOne(2, 1), 1.0);
+    EXPECT_DOUBLE_EQ(levelOne(0, 0), 0.0);
+    EXPECT_DOUBLE_EQ(levelOne(0, 3), 0.0);
+
+    const CSRMatrix levelTwo = HypergraphTools::computeSLevelAdjacencyMatrix(hGraph, 2);
+    EXPECT_EQ(levelTwo.nnz(), 4);
+    EXPECT_DOUBLE_EQ(levelTwo(0, 1), 1.0);
+    EXPECT_DOUBLE_EQ(levelTwo(1, 0), 1.0);
+    EXPECT_DOUBLE_EQ(levelTwo(1, 2), 1.0);
+    EXPECT_DOUBLE_EQ(levelTwo(2, 1), 1.0);
+    EXPECT_DOUBLE_EQ(levelTwo(0, 2), 0.0);
+
+    const CSRMatrix levelThree = HypergraphTools::computeSLevelAdjacencyMatrix(hGraph, 3);
+    EXPECT_EQ(levelThree.nnz(), 0);
+}
+
+TEST_P(HypergraphToolsGTest, testComputeSLevelAdjacencyMatrixWithRemovedEdge) {
+    Hypergraph hGraph(3, 0, weighted());
+    hGraph.addEdge({0, 1});
+    hGraph.addEdge({0, 2});
+    hGraph.addEdge({0, 1, 2});
+    hGraph.removeEdge(1);
+
+    const CSRMatrix matrix = HypergraphTools::computeSLevelAdjacencyMatrix(hGraph, 1);
+    EXPECT_EQ(matrix.numberOfRows(), 3);
+    EXPECT_EQ(matrix.numberOfColumns(), 3);
+    EXPECT_EQ(matrix.nnz(), 2);
+    EXPECT_DOUBLE_EQ(matrix(0, 2), 1.0);
+    EXPECT_DOUBLE_EQ(matrix(2, 0), 1.0);
+    EXPECT_EQ(matrix.nnzInRow(1), 0);
+}
+
 TEST_P(HypergraphToolsGTest, testCliqueExpansion) {
     Hypergraph hGraph(4, 0, weighted());
     hGraph.addEdge({0, 1});
