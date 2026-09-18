@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <map>
 #include <ranges>
+#include <stdexcept>
 #include <unordered_map>
 
 #include <networkit/auxiliary/Log.hpp>
@@ -176,42 +177,33 @@ edgeweight HypergraphTools::maxWeightedDegree(const Hypergraph &hGraph) {
 }
 
 CSRMatrix HypergraphTools::computeSLevelAdjacencyMatrix(const Hypergraph &hGraph, count s) {
+    if (s == 0)
+        throw std::invalid_argument("The s-level must be positive");
+
     const count dimension = hGraph.upperEdgeIdBound();
     std::vector<Triplet> triplets;
 
-    if (s == 0) {
-        const count numberOfEdges = hGraph.numberOfEdges();
-        if (numberOfEdges > 1)
-            triplets.reserve(numberOfEdges * (numberOfEdges - 1));
-        hGraph.forEdges([&](edgeid eid1) {
-            hGraph.forEdges([&](edgeid eid2) {
-                if (eid1 != eid2)
+    // Only store pairs that share at least one node. A pair is kept in the row of its smaller edge
+    // id, which avoids counting the same intersection twice.
+    std::vector<std::unordered_map<edgeid, count>> intersectionSizes(dimension);
+
+    hGraph.forNodes([&](node u) {
+        const auto &incidentEdges = hGraph.edgesOf(u);
+        for (auto first = incidentEdges.begin(); first != incidentEdges.end(); ++first) {
+            for (auto second = std::next(first); second != incidentEdges.end(); ++second) {
+                const auto [eid1, eid2] = std::minmax(*first, *second);
+                auto &intersectionSize = intersectionSizes[eid1][eid2];
+                ++intersectionSize;
+
+                // Emit the pair as soon as the threshold is reached. Subsequent common nodes do
+                // not create duplicate matrix entries.
+                if (intersectionSize == s) {
                     triplets.push_back({eid1, eid2, 1.0});
-            });
-        });
-    } else {
-        // Only store pairs that share at least one node. A pair is kept in the row of its smaller
-        // edge id, which avoids counting the same intersection twice.
-        std::vector<std::unordered_map<edgeid, count>> intersectionSizes(dimension);
-
-        hGraph.forNodes([&](node u) {
-            const auto &incidentEdges = hGraph.edgesOf(u);
-            for (auto first = incidentEdges.begin(); first != incidentEdges.end(); ++first) {
-                for (auto second = std::next(first); second != incidentEdges.end(); ++second) {
-                    const auto [eid1, eid2] = std::minmax(*first, *second);
-                    auto &intersectionSize = intersectionSizes[eid1][eid2];
-                    ++intersectionSize;
-
-                    // Emit the pair as soon as the threshold is reached. Subsequent common nodes
-                    // do not create duplicate matrix entries.
-                    if (intersectionSize == s) {
-                        triplets.push_back({eid1, eid2, 1.0});
-                        triplets.push_back({eid2, eid1, 1.0});
-                    }
+                    triplets.push_back({eid2, eid1, 1.0});
                 }
             }
-        });
-    }
+        }
+    });
 
     std::sort(triplets.begin(), triplets.end(), [](const Triplet &lhs, const Triplet &rhs) {
         return lhs.row < rhs.row || (lhs.row == rhs.row && lhs.column < rhs.column);

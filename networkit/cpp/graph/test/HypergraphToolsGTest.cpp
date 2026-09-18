@@ -141,11 +141,6 @@ TEST_P(HypergraphToolsGTest, testComputeSLevelAdjacencyMatrix) {
     hGraph.addEdge({2, 3, 4});
     hGraph.addEdge({5});
 
-    const CSRMatrix levelZero = HypergraphTools::computeSLevelAdjacencyMatrix(hGraph, 0);
-    EXPECT_EQ(levelZero.nnz(), 12);
-    EXPECT_DOUBLE_EQ(levelZero(0, 3), 1.0);
-    EXPECT_DOUBLE_EQ(levelZero(3, 3), 0.0);
-
     const CSRMatrix levelOne = HypergraphTools::computeSLevelAdjacencyMatrix(hGraph, 1);
     EXPECT_EQ(levelOne.numberOfRows(), 4);
     EXPECT_EQ(levelOne.numberOfColumns(), 4);

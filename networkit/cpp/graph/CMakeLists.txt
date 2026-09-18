@@ -3,6 +3,7 @@ networkit_add_module(graph
     GraphTools.cpp
     Hypergraph.cpp
     HypergraphTools.cpp
+    SLevelAdjacencyMatrixContainer.cpp
     KruskalMSF.cpp
     PrimMSF.cpp
     RandomMaximumSpanningForest.cpp
