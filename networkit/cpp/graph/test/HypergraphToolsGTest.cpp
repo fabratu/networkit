@@ -182,6 +182,35 @@ TEST_P(HypergraphToolsGTest, testComputeSLevelAdjacencyMatrixWithRemovedEdge) {
     EXPECT_EQ(matrix.nnzInRow(1), 0);
 }
 
+TEST_P(HypergraphToolsGTest, testComputeSDeltaMatrix) {
+    Hypergraph hGraph(6, 0, weighted());
+    hGraph.addEdge({0, 1, 2});
+    hGraph.addEdge({1, 2, 3});
+    hGraph.addEdge({2, 3, 4});
+    hGraph.addEdge({5});
+
+    const CSRMatrix deltaOne = HypergraphTools::computeSDeltaMatrix(hGraph, 1);
+    EXPECT_EQ(deltaOne.numberOfRows(), 4);
+    EXPECT_EQ(deltaOne.numberOfColumns(), 4);
+    EXPECT_EQ(deltaOne.nnz(), 2);
+    EXPECT_DOUBLE_EQ(deltaOne(0, 2), 1.0);
+    EXPECT_DOUBLE_EQ(deltaOne(2, 0), 1.0);
+    EXPECT_DOUBLE_EQ(deltaOne(0, 1), 0.0);
+    EXPECT_DOUBLE_EQ(deltaOne(0, 0), 0.0);
+
+    const CSRMatrix deltaTwo = HypergraphTools::computeSDeltaMatrix(hGraph, 2);
+    EXPECT_EQ(deltaTwo.nnz(), 4);
+    EXPECT_DOUBLE_EQ(deltaTwo(0, 1), 1.0);
+    EXPECT_DOUBLE_EQ(deltaTwo(1, 0), 1.0);
+    EXPECT_DOUBLE_EQ(deltaTwo(1, 2), 1.0);
+    EXPECT_DOUBLE_EQ(deltaTwo(2, 1), 1.0);
+    EXPECT_DOUBLE_EQ(deltaTwo(0, 2), 0.0);
+
+    const CSRMatrix deltaThree = HypergraphTools::computeSDeltaMatrix(hGraph, 3);
+    EXPECT_EQ(deltaThree.nnz(), 0);
+    EXPECT_THROW(HypergraphTools::computeSDeltaMatrix(hGraph, 0), std::invalid_argument);
+}
+
 TEST_P(HypergraphToolsGTest, testCliqueExpansion) {
     Hypergraph hGraph(4, 0, weighted());
     hGraph.addEdge({0, 1});

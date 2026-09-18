@@ -90,6 +90,18 @@ edgeweight maxWeightedDegree(const Hypergraph &hGraph);
 CSRMatrix computeSLevelAdjacencyMatrix(const Hypergraph &hGraph, count s);
 
 /**
+ * Computes the s-delta matrix of the hyperedges. Two distinct hyperedges are adjacent if they
+ * have exactly @a s nodes in common. Edge ids are used as matrix indices, so removed hyperedges
+ * produce empty rows and columns.
+ *
+ * @param hGraph The Hypergraph.
+ * @param s Positive number of common nodes.
+ * @return Symmetric CSR matrix with zero diagonal and entries in {0, 1}.
+ * @throws std::invalid_argument If @a s is zero.
+ */
+CSRMatrix computeSDeltaMatrix(const Hypergraph &hGraph, count s);
+
+/**
  * Returns the intersection of two hyperedges as a set
  *
  * @param hypergraph The Hypergraph.

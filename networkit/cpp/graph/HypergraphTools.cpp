@@ -211,6 +211,39 @@ CSRMatrix HypergraphTools::computeSLevelAdjacencyMatrix(const Hypergraph &hGraph
     return CSRMatrix(dimension, triplets, 0.0, true);
 }
 
+CSRMatrix HypergraphTools::computeSDeltaMatrix(const Hypergraph &hGraph, count s) {
+    if (s == 0)
+        throw std::invalid_argument("The s-delta level must be positive");
+
+    const count dimension = hGraph.upperEdgeIdBound();
+    std::vector<std::unordered_map<edgeid, count>> intersectionSizes(dimension);
+
+    hGraph.forNodes([&](node u) {
+        const auto &incidentEdges = hGraph.edgesOf(u);
+        for (auto first = incidentEdges.begin(); first != incidentEdges.end(); ++first) {
+            for (auto second = std::next(first); second != incidentEdges.end(); ++second) {
+                const auto [eid1, eid2] = std::minmax(*first, *second);
+                ++intersectionSizes[eid1][eid2];
+            }
+        }
+    });
+
+    std::vector<Triplet> triplets;
+    for (edgeid eid1 = 0; eid1 < intersectionSizes.size(); ++eid1) {
+        for (const auto &[eid2, intersectionSize] : intersectionSizes[eid1]) {
+            if (intersectionSize == s) {
+                triplets.push_back({eid1, eid2, 1.0});
+                triplets.push_back({eid2, eid1, 1.0});
+            }
+        }
+    }
+
+    std::sort(triplets.begin(), triplets.end(), [](const Triplet &lhs, const Triplet &rhs) {
+        return lhs.row < rhs.row || (lhs.row == rhs.row && lhs.column < rhs.column);
+    });
+    return CSRMatrix(dimension, triplets, 0.0, true);
+}
+
 std::unordered_set<node> HypergraphTools::getIntersection(Hypergraph &hGraph, edgeid eid1,
                                                           edgeid eid2) {
     std::unordered_set<node> smallerUSet = hGraph.order(eid1) < hGraph.order(eid2)
