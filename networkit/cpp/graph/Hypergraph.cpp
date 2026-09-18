@@ -10,7 +10,7 @@
 
 namespace NetworKit {
 
-Hypergraph::Hypergraph(count n, count m, bool weighted)
+Hypergraph::Hypergraph(count n, count m, bool weighted, bool incidenceWeighted)
     : numNodes(n), numEdges(m), nextNodeId(n), nextEdgeId(m),
 
       weighted(weighted), // indicates whether the graph is weighted or not
@@ -18,7 +18,8 @@ Hypergraph::Hypergraph(count n, count m, bool weighted)
 
       nodeExists(n, true), nodeWeights(weighted ? n : 0, defaultNodeWeight),
 
-      nodeIncidence(n),
+      nodeIncidence(n), incidenceWeighted(incidenceWeighted),
+      incidenceWeights(incidenceWeighted ? n : 0),
 
       edgeExists(m, true), edgeWeights(weighted ? m : 0, defaultEdgeWeight),
 
@@ -35,6 +36,8 @@ node Hypergraph::addNode() {
     nodeExists.push_back(true);
 
     nodeIncidence.emplace_back();
+    if (incidenceWeighted)
+        incidenceWeights.emplace_back();
     if (weighted)
         nodeWeights.emplace_back();
 
@@ -49,6 +52,8 @@ node Hypergraph::addNodes(count numberOfNewNodes) {
     // update per node data structures
     nodeExists.resize(nextNodeId, true);
     nodeIncidence.resize(nextNodeId);
+    if (incidenceWeighted)
+        incidenceWeights.resize(nextNodeId);
     if (weighted)
         nodeWeights.resize(nextNodeId, defaultNodeWeight);
 
@@ -65,6 +70,8 @@ node Hypergraph::addNodeTo(const std::vector<edgeid> &edges, node u) {
         if (edgeExists[eid]) {
             edgeIncidence[eid].insert(u);
             nodeIncidence[u].insert(eid);
+            if (incidenceWeighted)
+                incidenceWeights[u].emplace(eid, defaultEdgeWeight);
         }
     }
 
@@ -81,6 +88,8 @@ edgeid Hypergraph::addNodesTo(const std::vector<node> &nodes, edgeid eid) {
         if (nodeExists[eid]) {
             nodeIncidence[curNode].insert(eid);
             edgeIncidence[eid].insert(curNode);
+            if (incidenceWeighted)
+                incidenceWeights[curNode].emplace(eid, defaultEdgeWeight);
         }
     }
     return eid;
@@ -90,7 +99,11 @@ void Hypergraph::removeNode(node u) {
     assert(u < nextNodeId);
     assert(nodeExists[u]);
 
+    for (edgeid eid : nodeIncidence[u])
+        edgeIncidence[eid].erase(u);
     nodeIncidence[u].clear();
+    if (incidenceWeighted)
+        incidenceWeights[u].clear();
 
     // Make the attributes of this node invalid
     auto &theMap = nodeAttributeMap.attrMap;
@@ -116,6 +129,30 @@ void Hypergraph::removeNodeFrom(node u, edgeid eid) {
     assert(edgeExists[eid]);
 
     edgeIncidence[eid].erase(u);
+    nodeIncidence[u].erase(eid);
+    if (incidenceWeighted)
+        incidenceWeights[u].erase(eid);
+}
+
+edgeweight Hypergraph::getIncidenceWeight(node u, edgeid eid) const {
+    assert(u < nextNodeId);
+    assert(eid < nextEdgeId);
+    assert(nodeExists[u]);
+    assert(edgeExists[eid]);
+    assert(edgeIncidence[eid].find(u) != edgeIncidence[eid].end());
+
+    return incidenceWeighted ? incidenceWeights[u].at(eid) : defaultEdgeWeight;
+}
+
+void Hypergraph::setIncidenceWeight(node u, edgeid eid, edgeweight weight) {
+    assert(u < nextNodeId);
+    assert(eid < nextEdgeId);
+    assert(nodeExists[u]);
+    assert(edgeExists[eid]);
+    assert(edgeIncidence[eid].find(u) != edgeIncidence[eid].end());
+
+    if (incidenceWeighted)
+        incidenceWeights[u][eid] = weight;
 }
 
 nodeweight Hypergraph::getNodeWeight(node u) const {
@@ -154,14 +191,17 @@ count Hypergraph::degree(node u) const {
 edgeweight Hypergraph::weightedDegree(node u) const {
     assert(u < nextNodeId);
 
-    if (!weighted)
+    if (!weighted && !incidenceWeighted)
         return static_cast<edgeweight>(degree(u));
 
     edgeweight res{0.0};
 
     if (nodeExists[u]) {
         for (edgeid eid : nodeIncidence[u]) {
-            res += edgeWeights[eid];
+            const edgeweight edgeWeight = weighted ? edgeWeights[eid] : defaultEdgeWeight;
+            const edgeweight incidenceWeight =
+                incidenceWeighted ? incidenceWeights[u].at(eid) : defaultEdgeWeight;
+            res += edgeWeight * incidenceWeight;
         }
     }
     return res;
@@ -215,6 +255,8 @@ edgeid Hypergraph::addEdge(const std::vector<node> &nodes, bool addMissing) {
 
     for (auto v : edgeIncidence[eid]) {
         nodeIncidence[v].insert(eid);
+        if (incidenceWeighted)
+            incidenceWeights[v].emplace(eid, defaultEdgeWeight);
     }
 
     return eid;
@@ -224,6 +266,11 @@ void Hypergraph::removeEdge(edgeid eid) {
     assert(eid < nextEdgeId);
     assert(edgeExists[eid]);
 
+    for (node u : edgeIncidence[eid]) {
+        nodeIncidence[u].erase(eid);
+        if (incidenceWeighted)
+            incidenceWeights[u].erase(eid);
+    }
     edgeIncidence[eid].clear();
 
     // Make the attributes of this edge invalid

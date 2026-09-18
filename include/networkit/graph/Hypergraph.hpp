@@ -9,6 +9,7 @@
 #define NETWORKIT_GRAPH_HYPERGRAPH_HPP_
 
 #include <cstddef>
+#include <unordered_map>
 #include <unordered_set>
 #include <vector>
 
@@ -56,6 +57,12 @@ class Hypergraph final {
 
     //!< list of edge ids, which a node is incident to.
     std::vector<std::unordered_set<edgeid>> nodeIncidence;
+
+    //!< true if incidences support weights other than 1.0
+    bool incidenceWeighted;
+
+    //!< incidenceWeights[u][eid] is the weight of node u in edge eid
+    std::vector<std::unordered_map<edgeid, edgeweight>> incidenceWeights;
 
     // Edge related data
 
@@ -131,9 +138,10 @@ public:
      *
      * @param n Number of nodes
      * @param m Number of edges
-     * @param weighted Set the Hypergraph to be weighted
+     * @param weighted Set the Hypergraph's nodes and edges to be weighted
+     * @param incidenceWeighted Set the Hypergraph's incidences to be weighted
      */
-    Hypergraph(count n = 0, count m = 0, bool weighted = false);
+    Hypergraph(count n = 0, count m = 0, bool weighted = false, bool incidenceWeighted = false);
 
     /* GLOBAL PROPERTIES */
 
@@ -144,6 +152,12 @@ public:
      * than 1.0.
      */
     bool isWeighted() const noexcept { return weighted; }
+
+    /**
+     * Returns whether this hypergraph supports incidence weights other than 1.0.
+     * @return true if incidences are weighted, false otherwise.
+     */
+    bool isIncidenceWeighted() const noexcept { return incidenceWeighted; }
 
     /**
      * Return <code>true</code> if hypergraph contains no nodes.
@@ -277,7 +291,8 @@ public:
     count degree(node u) const;
 
     /**
-     * Returns the (weighted) degree of a node.
+     * Returns the weighted degree of a node. Edge and incidence weights are multiplied for each
+     * incident hyperedge.
      *
      * @param u The node id.
      * @return count Weighted degree of node.
@@ -291,6 +306,25 @@ public:
      * @return The edges containing @a u.
      */
     const std::unordered_set<edgeid> &edgesOf(node u) const { return nodeIncidence[u]; };
+
+    /**
+     * Return the weight of node @a u in hyperedge @a eid.
+     *
+     * @param u Node id.
+     * @param eid Hyperedge id.
+     * @return The incidence weight, or 1.0 for an incidence-unweighted hypergraph.
+     */
+    edgeweight getIncidenceWeight(node u, edgeid eid) const;
+
+    /**
+     * Set the weight of node @a u in hyperedge @a eid.
+     * This is a no-op for an incidence-unweighted hypergraph.
+     *
+     * @param u Node id.
+     * @param eid Hyperedge id.
+     * @param weight Incidence weight.
+     */
+    void setIncidenceWeight(node u, edgeid eid, edgeweight weight);
 
     /**
      * Retrieve the neighbors of a given node @a u.
@@ -437,7 +471,7 @@ public:
             neighbors = this->hGraph->getNeighbors(curNode);
         };
 
-        NeighborRange() : hGraph(nullptr){};
+        NeighborRange() : hGraph(nullptr) {};
 
         NeighborIterator begin() const {
             assert(hGraph);

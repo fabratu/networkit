@@ -23,6 +23,7 @@ This folder contains many smaller graphs. They are used in the testing suite and
 | dynamicTest.gexf                 | GEXFReader              | n/a                     | 2677               | n/a             | n/a             | n/a      | n/a      | n/a     |
 | dynamicTest2.gexf                | GEXFReader              | n/a                     | 74818              | n/a             | n/a             | n/a      | n/a      | n/a     |
 | dynamicTest3.gexf                | GEXFReader              | n/a                     | 921                | n/a             | n/a             | n/a      | n/a      | n/a     |
+| edge-bar-reviews-swapped.hmetis | n/a                     | HMETISHypergraphReader  | 2080               | 15              | 222             | n/a      | TRUE     | [parameter-light-hyperleiden](https://github.com/KIT-EAE/parameter-light-hyperleiden/blob/main/evaluation-snam-asonam-2026/datasets/edge-bar-reviews-swapped.hmetis) |
 | example.edgelist                 | Format.EdgeListTabOne   | EdgeListReader          | 85                 | 10              | 10              | FALSE    | FALSE    | n/a     |
 | example.graph                    | Format.METIS            | METISGraphReader        | 16                 | 4               | 2               | FALSE    | FALSE    | n/a     |
 | example2.dgs                     | n/a                     | DGSReader               | 161                | n/a             | n/a             | n/a      | n/a      | n/a     |

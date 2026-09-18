@@ -18,6 +18,8 @@ networkit_add_module(io
     GraphIO.cpp
     GraphToolBinaryReader.cpp
     GraphToolBinaryWriter.cpp
+    HMETISHypergraphReader.cpp
+    HMETISHypergraphWriter.cpp
     KONECTGraphReader.cpp
     MemoryMappedFile.cpp
     METISGraphReader.cpp
@@ -43,4 +45,3 @@ networkit_module_link_modules(io
     algebraic auxiliary dynamics graph structures)
 
 add_subdirectory(test)
-
