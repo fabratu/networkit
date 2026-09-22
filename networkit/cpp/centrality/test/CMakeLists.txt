@@ -9,3 +9,4 @@ networkit_add_test(centrality SpanningEdgeCentralityGTest
 networkit_add_test(centrality TopClosenessGTest
     generators graph io)
 networkit_add_test(centrality HyperKatzCentralityGTest graph)
+networkit_add_benchmark(centrality HyperKatzCentralityBenchmark graph io)
