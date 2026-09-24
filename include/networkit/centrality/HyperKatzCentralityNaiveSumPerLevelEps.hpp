@@ -1,5 +1,5 @@
-#ifndef NETWORKIT_CENTRALITY_HYPER_KATZ_CENTRALITY_NAIVE_SUM_HPP_
-#define NETWORKIT_CENTRALITY_HYPER_KATZ_CENTRALITY_NAIVE_SUM_HPP_
+#ifndef NETWORKIT_CENTRALITY_HYPER_KATZ_CENTRALITY_NAIVE_SUM_PER_LEVEL_EPS_HPP_
+#define NETWORKIT_CENTRALITY_HYPER_KATZ_CENTRALITY_NAIVE_SUM_PER_LEVEL_EPS_HPP_
 
 #include <utility>
 #include <vector>
@@ -24,7 +24,7 @@ namespace NetworKit {
  *
  * @see https://doi.org/10.4230/LIPIcs.ESA.2018.42
  */
-class HyperKatzCentralityNaiveSum final : public Algorithm {
+class HyperKatzCentralityNaiveSumPerLevelEps final : public Algorithm {
 public:
     /**
      * Constructs the algorithm for @a hGraph. Each non-empty level receives a damping factor
@@ -35,8 +35,8 @@ public:
      * @param groupOnly Whether only membership in the top-k, rather than its order, is required.
      * @param tolerance Ranking tolerance used by the convergence test.
      */
-    HyperKatzCentralityNaiveSum(const Hypergraph &hGraph, count k, bool groupOnly = false,
-                                double tolerance = 1e-9);
+    HyperKatzCentralityNaiveSumPerLevelEps(const Hypergraph &hGraph, count k,
+                                           bool groupOnly = false, double tolerance = 1e-9);
 
     void run() override;
 
@@ -85,7 +85,8 @@ private:
     std::vector<double> levelAlphas;
     std::vector<double> alphaByLevel;
     std::vector<Vector> currentPaths;
-    std::vector<Vector> lowerCorrection;
+    std::vector<Vector> lowerBound;
+    std::vector<Vector> upperBound;
     Vector msLowerBound;
     Vector msUpperBound;
     std::vector<edgeid> activeRanking;
@@ -93,4 +94,4 @@ private:
 
 } // namespace NetworKit
 
-#endif // NETWORKIT_CENTRALITY_HYPER_KATZ_CENTRALITY_NAIVE_SUM_HPP_
+#endif // NETWORKIT_CENTRALITY_HYPER_KATZ_CENTRALITY_NAIVE_SUM_PER_LEVEL_EPS_HPP_

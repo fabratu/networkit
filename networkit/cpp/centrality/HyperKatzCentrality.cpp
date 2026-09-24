@@ -143,7 +143,7 @@ void HyperKatzCentrality::doIteration() {
     }
 
     hGraph.parallelForEdges([&](edgeid eid) {
-        scoreData[eid] = baseData[eid] + lowerCorrection[eid];
+        scoreData[eid] = baseData[eid]; // + lowerCorrection[eid];
         boundData[eid] = baseData[eid] + upperCorrection[eid];
     });
 

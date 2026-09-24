@@ -3,12 +3,12 @@
 #include <cmath>
 #include <stdexcept>
 
-#include <networkit/centrality/HyperKatzCentralityNaiveSum.hpp>
+#include <networkit/centrality/HyperKatzCentralityNaiveSumPerLevelEps.hpp>
 
 namespace NetworKit {
 
-HyperKatzCentralityNaiveSum::HyperKatzCentralityNaiveSum(const Hypergraph &hGraph, count k,
-                                                         bool groupOnly, double tolerance)
+HyperKatzCentralityNaiveSumPerLevelEps::HyperKatzCentralityNaiveSumPerLevelEps(
+    const Hypergraph &hGraph, count k, bool groupOnly, double tolerance)
     : hGraph{hGraph}, matrices{hGraph}, k{k}, groupOnly{groupOnly}, rankTolerance{tolerance} {
     if (k == 0 || k > hGraph.numberOfEdges())
         throw std::invalid_argument("k must be between one and the number of hyperedges");
@@ -37,16 +37,25 @@ HyperKatzCentralityNaiveSum::HyperKatzCentralityNaiveSum(const Hypergraph &hGrap
             "At least one non-empty s-level matrix is required for HyperKatzCentrality");
 }
 
-void HyperKatzCentralityNaiveSum::run() {
+void HyperKatzCentralityNaiveSumPerLevelEps::run() {
     const count dimension = hGraph.upperEdgeIdBound();
+
+    // nPaths.clear();
+    // nPaths.emplace_back(dimension, 0.0);
+
+    // hGraph.forEdges([&](edgeid eid) { currentPaths[eid] = 1.0; });
 
     currentPaths.clear();
     currentPaths.reserve(levelMatrices.size());
-    lowerCorrection.clear();
-    lowerCorrection.reserve(levelMatrices.size());
+    lowerBound.clear();
+    lowerBound.reserve(levelMatrices.size());
+    upperBound.clear();
+    upperBound.reserve(levelMatrices.size());
     for (index i = 0; i < levelMatrices.size(); ++i) {
         currentPaths.emplace_back(dimension, 1.0);
-        lowerCorrection.emplace_back(dimension);
+        lowerBound.emplace_back(dimension, 0.0);
+        upperBound.emplace_back(dimension, DBL_MAX);
+        // hGraph.forEdges([&](edgeid eid) { currentPaths.back()[eid] = 1.0; });
     }
 
     activeRanking.clear();
@@ -55,6 +64,8 @@ void HyperKatzCentralityNaiveSum::run() {
 
     msLowerBound = Vector(dimension, 0.0);
     msUpperBound = Vector(dimension, 0.0);
+    // baseData.assign(dimension, 0.0);
+    // boundData.assign(dimension, DBL_MAX);
     iterationReached = 0;
 
     do {
@@ -64,17 +75,17 @@ void HyperKatzCentralityNaiveSum::run() {
     hasRun = true;
 }
 
-const Vector &HyperKatzCentralityNaiveSum::scores() const {
+const Vector &HyperKatzCentralityNaiveSumPerLevelEps::scores() const {
     assureFinished();
     return msLowerBound;
 }
 
-double HyperKatzCentralityNaiveSum::score(edgeid eid) const {
+double HyperKatzCentralityNaiveSumPerLevelEps::score(edgeid eid) const {
     assureFinished();
     return msLowerBound[eid];
 }
 
-std::vector<std::pair<edgeid, double>> HyperKatzCentralityNaiveSum::ranking() const {
+std::vector<std::pair<edgeid, double>> HyperKatzCentralityNaiveSumPerLevelEps::ranking() const {
     assureFinished();
     std::vector<std::pair<edgeid, double>> result;
     result.reserve(hGraph.numberOfEdges());
@@ -85,17 +96,17 @@ std::vector<std::pair<edgeid, double>> HyperKatzCentralityNaiveSum::ranking() co
     return result;
 }
 
-edgeid HyperKatzCentralityNaiveSum::top(count n) const {
+edgeid HyperKatzCentralityNaiveSumPerLevelEps::top(count n) const {
     assureFinished();
     return activeRanking.at(n);
 }
 
-double HyperKatzCentralityNaiveSum::bound(edgeid eid) const {
+double HyperKatzCentralityNaiveSumPerLevelEps::bound(edgeid eid) const {
     assureFinished();
     return msUpperBound[eid];
 }
 
-double HyperKatzCentralityNaiveSum::getAlpha(count s) const {
+double HyperKatzCentralityNaiveSumPerLevelEps::getAlpha(count s) const {
     if (s >= alphaByLevel.size())
         throw std::out_of_range("The s-level exceeds the maximum level");
     if (s == 0 || alphaByLevel[s] == 0.0)
@@ -103,27 +114,60 @@ double HyperKatzCentralityNaiveSum::getAlpha(count s) const {
     return alphaByLevel[s];
 }
 
-bool HyperKatzCentralityNaiveSum::areDistinguished(edgeid eid1, edgeid eid2) const {
+bool HyperKatzCentralityNaiveSumPerLevelEps::areDistinguished(edgeid eid1, edgeid eid2) const {
     assureFinished();
     if (msLowerBound[eid1] < msLowerBound[eid2])
         std::swap(eid1, eid2);
     return msLowerBound[eid1] > msLowerBound[eid2];
 }
 
-bool HyperKatzCentralityNaiveSum::areSufficientlyRanked(edgeid high, edgeid low) const {
+bool HyperKatzCentralityNaiveSumPerLevelEps::areSufficientlyRanked(edgeid high, edgeid low) const {
     return msLowerBound[high] > msUpperBound[low] - rankTolerance;
 }
+
+// void HyperKatzCentrality::doIteration() {
+//     const count r = iterationReached + 1;
+//     const count dimension = hGraph.upperEdgeIdBound();
+//     nPaths.emplace_back(dimension, 0.0);
+//     std::vector<double> lowerCorrection(dimension, 0.0);
+//     std::vector<double> upperCorrection(dimension, 0.0);
+
+//     for (index i = 0; i < levelMatrices.size(); ++i) {
+//         currentPaths[i] = *levelMatrices[i] * currentPaths[i];
+
+//         const double alpha = levelAlphas[i];
+//         const count maxDegree = levelMaxDegrees[i];
+//         const double alphaPower = std::pow(alpha, static_cast<double>(r));
+//         const double nextAlphaPower = alpha * alphaPower;
+//         const double boundFactor = nextAlphaPower * maxDegree / (1.0 - alpha * maxDegree);
+
+//         hGraph.forEdges([&](edgeid eid) {
+//             const double paths = currentPaths[i][eid];
+//             nPaths[r][eid] += paths;
+//             baseData[eid] += alphaPower * paths;
+//             lowerCorrection[eid] += nextAlphaPower * paths;
+//             upperCorrection[eid] += boundFactor * paths;
+//         });
+//     }
+
+//     hGraph.parallelForEdges([&](edgeid eid) {
+//         scoreData[eid] = baseData[eid] + lowerCorrection[eid];
+//         boundData[eid] = baseData[eid] + upperCorrection[eid];
+//     });
+
+//     ++iterationReached;
+// }
 
 // NOTES:
 // - currentPaths holds vectors, currently vector values, but without alpha paths are num paths are
 // uints
 // - parrallelize over levelMatrices, maybe via parallelForLevel in matrix container
-// - maybe more efficient to update alpha also iterativly
 
-void HyperKatzCentralityNaiveSum::doIteration() {
+void HyperKatzCentralityNaiveSumPerLevelEps::doIteration() {
     const count r = iterationReached + 1;
     const count dimension = hGraph.upperEdgeIdBound();
-    msUpperBound = Vector(dimension);
+    // std::vector<double> lowerCorrection(dimension, 0.0);
+    // std::vector<double> upperCorrection(dimension, 0.0);
 
     for (index i = 0; i < levelMatrices.size(); ++i) {
         currentPaths[i] = *levelMatrices[i] * currentPaths[i];
@@ -132,18 +176,29 @@ void HyperKatzCentralityNaiveSum::doIteration() {
         const count maxDegree = levelMaxDegrees[i];
         const double alphaPower = std::pow(alpha, static_cast<double>(r));
         const double nextAlphaPower = alpha * alphaPower;
-        const double boundFactor = maxDegree / (1.0 - alpha * maxDegree);
+        const double boundFactor = nextAlphaPower * maxDegree / (1.0 - alpha * maxDegree);
 
-        msLowerBound += alphaPower * currentPaths[i];
-        msUpperBound += nextAlphaPower * boundFactor * currentPaths[i];
+        lowerBound[i] += alphaPower * currentPaths[i];
+        upperBound[i] += nextAlphaPower * boundFactor * currentPaths[i];
+
+        //     hGraph.forEdges([&](edgeid eid) {
+        //         const double paths = currentPaths[i][eid];
+        //         nPaths[r][eid] += paths;
+        //         baseData[eid] += alphaPower * paths;
+        //         lowerCorrection[eid] += nextAlphaPower * paths;
+        //         upperCorrection[eid] += boundFactor * paths;
+        //     });
+        // }
+
+        // hGraph.parallelForEdges([&](edgeid eid) {
+        //     scoreData[eid] = baseData[eid] + lowerCorrection[eid];
+        //     boundData[eid] = baseData[eid] + upperCorrection[eid];
+        // });
     }
-
-    msUpperBound += msLowerBound;
-
     ++iterationReached;
 }
 
-bool HyperKatzCentralityNaiveSum::checkConvergence() {
+bool HyperKatzCentralityNaiveSumPerLevelEps::checkConvergence() {
     if (activeRanking.size() > k) {
         std::partial_sort(
             activeRanking.begin(), activeRanking.begin() + k, activeRanking.end(),
