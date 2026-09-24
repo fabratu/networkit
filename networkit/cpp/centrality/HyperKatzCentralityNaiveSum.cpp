@@ -18,7 +18,7 @@ HyperKatzCentralityNaiveSum::HyperKatzCentralityNaiveSum(const Hypergraph &hGrap
     matrices.build(SMatrixType::Level);
 
     Vector ones(hGraph.upperEdgeIdBound(), 1.0);
-    alphaByLevel.resize(matrices.getMaxLevel() + 1, 0.0);
+    alphaByLevel.resize(matrices.getMaxLevel(), 0.0);
     matrices.forLevels([&](count s, const CSRMatrix &matrix) {
         const Vector degrees = matrix * ones;
         count maxDegree = 0;

@@ -58,20 +58,13 @@ public:
     /** Returns whether the bounds establish an order between two hyperedges. */
     bool areDistinguished(edgeid eid1, edgeid eid2) const;
 
-    /**
-     * Returns the damping factor selected for level @a s.
-     *
-     * @throws std::invalid_argument If the level's matrix is empty.
-     * @throws std::out_of_range If @a s is outside the container's levels.
-     */
-    double getAlpha(count s) const;
-
     /** Number of completed approximation iterations. */
     count iterationReached{0};
 
 private:
     void doIteration();
     bool checkConvergence();
+    bool checkGlobalConvergence();
     bool areSufficientlyRanked(edgeid high, edgeid low) const;
 
     const Hypergraph &hGraph;
@@ -83,13 +76,14 @@ private:
     std::vector<const CSRMatrix *> levelMatrices;
     std::vector<count> levelMaxDegrees;
     std::vector<double> levelAlphas;
-    std::vector<double> alphaByLevel;
+    std::vector<double> levelTolerances;
     std::vector<Vector> currentPaths;
     std::vector<Vector> lowerBound;
     std::vector<Vector> upperBound;
     Vector msLowerBound;
     Vector msUpperBound;
     std::vector<edgeid> activeRanking;
+    count activeLevel;
 };
 
 } // namespace NetworKit

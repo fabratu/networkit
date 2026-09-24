@@ -18,7 +18,7 @@ HyperKatzCentralityNaiveSumPerLevelEps::HyperKatzCentralityNaiveSumPerLevelEps(
     matrices.build(SMatrixType::Level);
 
     Vector ones(hGraph.upperEdgeIdBound(), 1.0);
-    alphaByLevel.resize(matrices.getMaxLevel() + 1, 0.0);
+    double levelTol = rankTolerance / matrices.getMaxLevel();
     matrices.forLevels([&](count s, const CSRMatrix &matrix) {
         const Vector degrees = matrix * ones;
         count maxDegree = 0;
@@ -29,7 +29,9 @@ HyperKatzCentralityNaiveSumPerLevelEps::HyperKatzCentralityNaiveSumPerLevelEps(
         levelMatrices.push_back(&matrix);
         levelMaxDegrees.push_back(maxDegree);
         levelAlphas.push_back(alpha);
-        alphaByLevel[s] = alpha;
+
+        // Assume evenly split tolerances
+        levelTolerances.push_back(levelTol);
     });
 
     if (levelMatrices.empty())
@@ -40,11 +42,6 @@ HyperKatzCentralityNaiveSumPerLevelEps::HyperKatzCentralityNaiveSumPerLevelEps(
 void HyperKatzCentralityNaiveSumPerLevelEps::run() {
     const count dimension = hGraph.upperEdgeIdBound();
 
-    // nPaths.clear();
-    // nPaths.emplace_back(dimension, 0.0);
-
-    // hGraph.forEdges([&](edgeid eid) { currentPaths[eid] = 1.0; });
-
     currentPaths.clear();
     currentPaths.reserve(levelMatrices.size());
     lowerBound.clear();
@@ -53,9 +50,8 @@ void HyperKatzCentralityNaiveSumPerLevelEps::run() {
     upperBound.reserve(levelMatrices.size());
     for (index i = 0; i < levelMatrices.size(); ++i) {
         currentPaths.emplace_back(dimension, 1.0);
-        lowerBound.emplace_back(dimension, 0.0);
-        upperBound.emplace_back(dimension, DBL_MAX);
-        // hGraph.forEdges([&](edgeid eid) { currentPaths.back()[eid] = 1.0; });
+        lowerBound.emplace_back(dimension);
+        upperBound.emplace_back(dimension);
     }
 
     activeRanking.clear();
@@ -64,9 +60,8 @@ void HyperKatzCentralityNaiveSumPerLevelEps::run() {
 
     msLowerBound = Vector(dimension, 0.0);
     msUpperBound = Vector(dimension, 0.0);
-    // baseData.assign(dimension, 0.0);
-    // boundData.assign(dimension, DBL_MAX);
     iterationReached = 0;
+    activeLevel = matrices.getMaxLevel();
 
     do {
         doIteration();
@@ -106,14 +101,6 @@ double HyperKatzCentralityNaiveSumPerLevelEps::bound(edgeid eid) const {
     return msUpperBound[eid];
 }
 
-double HyperKatzCentralityNaiveSumPerLevelEps::getAlpha(count s) const {
-    if (s >= alphaByLevel.size())
-        throw std::out_of_range("The s-level exceeds the maximum level");
-    if (s == 0 || alphaByLevel[s] == 0.0)
-        throw std::invalid_argument("The s-level matrix is empty");
-    return alphaByLevel[s];
-}
-
 bool HyperKatzCentralityNaiveSumPerLevelEps::areDistinguished(edgeid eid1, edgeid eid2) const {
     assureFinished();
     if (msLowerBound[eid1] < msLowerBound[eid2])
@@ -125,49 +112,10 @@ bool HyperKatzCentralityNaiveSumPerLevelEps::areSufficientlyRanked(edgeid high, 
     return msLowerBound[high] > msUpperBound[low] - rankTolerance;
 }
 
-// void HyperKatzCentrality::doIteration() {
-//     const count r = iterationReached + 1;
-//     const count dimension = hGraph.upperEdgeIdBound();
-//     nPaths.emplace_back(dimension, 0.0);
-//     std::vector<double> lowerCorrection(dimension, 0.0);
-//     std::vector<double> upperCorrection(dimension, 0.0);
-
-//     for (index i = 0; i < levelMatrices.size(); ++i) {
-//         currentPaths[i] = *levelMatrices[i] * currentPaths[i];
-
-//         const double alpha = levelAlphas[i];
-//         const count maxDegree = levelMaxDegrees[i];
-//         const double alphaPower = std::pow(alpha, static_cast<double>(r));
-//         const double nextAlphaPower = alpha * alphaPower;
-//         const double boundFactor = nextAlphaPower * maxDegree / (1.0 - alpha * maxDegree);
-
-//         hGraph.forEdges([&](edgeid eid) {
-//             const double paths = currentPaths[i][eid];
-//             nPaths[r][eid] += paths;
-//             baseData[eid] += alphaPower * paths;
-//             lowerCorrection[eid] += nextAlphaPower * paths;
-//             upperCorrection[eid] += boundFactor * paths;
-//         });
-//     }
-
-//     hGraph.parallelForEdges([&](edgeid eid) {
-//         scoreData[eid] = baseData[eid] + lowerCorrection[eid];
-//         boundData[eid] = baseData[eid] + upperCorrection[eid];
-//     });
-
-//     ++iterationReached;
-// }
-
-// NOTES:
-// - currentPaths holds vectors, currently vector values, but without alpha paths are num paths are
-// uints
-// - parrallelize over levelMatrices, maybe via parallelForLevel in matrix container
-
+// TODO: Implement parallel iterator now, otherwise per eps is wasted
 void HyperKatzCentralityNaiveSumPerLevelEps::doIteration() {
     const count r = iterationReached + 1;
     const count dimension = hGraph.upperEdgeIdBound();
-    // std::vector<double> lowerCorrection(dimension, 0.0);
-    // std::vector<double> upperCorrection(dimension, 0.0);
 
     for (index i = 0; i < levelMatrices.size(); ++i) {
         currentPaths[i] = *levelMatrices[i] * currentPaths[i];
@@ -176,26 +124,25 @@ void HyperKatzCentralityNaiveSumPerLevelEps::doIteration() {
         const count maxDegree = levelMaxDegrees[i];
         const double alphaPower = std::pow(alpha, static_cast<double>(r));
         const double nextAlphaPower = alpha * alphaPower;
-        const double boundFactor = nextAlphaPower * maxDegree / (1.0 - alpha * maxDegree);
+        const double boundFactor = maxDegree / (1.0 - alpha * maxDegree);
 
         lowerBound[i] += alphaPower * currentPaths[i];
-        upperBound[i] += nextAlphaPower * boundFactor * currentPaths[i];
-
-        //     hGraph.forEdges([&](edgeid eid) {
-        //         const double paths = currentPaths[i][eid];
-        //         nPaths[r][eid] += paths;
-        //         baseData[eid] += alphaPower * paths;
-        //         lowerCorrection[eid] += nextAlphaPower * paths;
-        //         upperCorrection[eid] += boundFactor * paths;
-        //     });
-        // }
-
-        // hGraph.parallelForEdges([&](edgeid eid) {
-        //     scoreData[eid] = baseData[eid] + lowerCorrection[eid];
-        //     boundData[eid] = baseData[eid] + upperCorrection[eid];
-        // });
+        upperBound[i] = lowerBound[i] + nextAlphaPower * boundFactor * currentPaths[i];
     }
+
     ++iterationReached;
+}
+
+bool HyperKatzCentralityNaiveSumPerLevelEps::checkGlobalConvergence() {
+
+    if (activeLevel == 0)
+        return true;
+
+    for (index i = 0; i < levelMatrices.size(); ++i) {
+        // TODO: make checkconvergence check each level (?), maybe more efficient to check in
+        // doIteration for upperCorrection vs eps_s for every entry
+        checkConvergence;
+    }
 }
 
 bool HyperKatzCentralityNaiveSumPerLevelEps::checkConvergence() {
