@@ -17,6 +17,7 @@
 
 #include <networkit/auxiliary/Timer.hpp>
 #include <networkit/centrality/HyperKatzCentrality.hpp>
+#include <networkit/centrality/HyperKatzCentralityDeltaSum.hpp>
 #include <networkit/centrality/HyperKatzCentralityNaiveSum.hpp>
 #include <networkit/centrality/HyperKatzCentralityNaiveSumPerLevelEps.hpp>
 #include <networkit/io/HMETISHypergraphReader.hpp>
@@ -191,6 +192,44 @@ TEST(HyperKatzCentralityBenchmark, benchmarkNaiveSumPerLevelEps) {
               << "," << centrality->score(centrality->top(1)) << ","
               << centrality->score(centrality->top(2)) << "\n"
               << "Skipped SpMV: " << centrality->skippedSpMV << std::endl;
+
+    EXPECT_TRUE(centrality->hasFinished());
+}
+
+TEST(HyperKatzCentralityBenchmark, benchmarkDeltaSum) {
+#if !defined(__APPLE__) && !defined(__linux__)
+    GTEST_SKIP() << "Resident-memory sampling is only available on macOS and Linux";
+#endif
+
+    const Hypergraph hGraph = HMETISHypergraphReader{}.read(inputPath);
+    ASSERT_EQ(hGraph.numberOfNodes(), 88836);
+    ASSERT_EQ(hGraph.numberOfEdges(), 65898);
+
+    PeakResidentMemorySampler memory;
+    ASSERT_TRUE(memory.isSupported());
+
+    Aux::Log::setLogLevel("INFO");
+
+    Aux::Timer timer;
+    timer.start();
+    auto centrality = std::make_unique<HyperKatzCentralityDeltaSum>(hGraph, topK, true);
+    centrality->run();
+    timer.stop();
+    memory.stop();
+
+    constexpr double bytesPerMiB = 1024.0 * 1024.0;
+    std::cout << "HyperKatzCentrality benchmark: " << hGraph.numberOfNodes() << " nodes, "
+              << hGraph.numberOfEdges() << " hyperedges, top-k=" << topK << '\n'
+              << "  runtime: " << timer.elapsedMilliseconds() << " ms\n"
+              << "  peak resident memory: " << static_cast<double>(memory.peakBytes()) / bytesPerMiB
+              << " MiB\n"
+              << "  additional resident memory after loading: "
+              << static_cast<double>(memory.additionalBytes()) / bytesPerMiB << " MiB\n"
+              << "  iterations: " << centrality->iterationReached
+              << " top 3 edges: " << centrality->top(0) << "," << centrality->top(1) << ","
+              << centrality->top(2) << " top 3 score: " << centrality->score(centrality->top(0))
+              << "," << centrality->score(centrality->top(1)) << ","
+              << centrality->score(centrality->top(2)) << std::endl;
 
     EXPECT_TRUE(centrality->hasFinished());
 }
