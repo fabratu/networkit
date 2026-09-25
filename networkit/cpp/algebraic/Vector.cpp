@@ -53,6 +53,10 @@ double Vector::mean() const {
     return sum / (double)n;
 }
 
+double Vector::max() const {
+    return *std::max_element(values.begin(), values.end());
+}
+
 bool Vector::operator==(const Vector &other) const {
     return isTransposed() == other.isTransposed() && values == other.values;
 }

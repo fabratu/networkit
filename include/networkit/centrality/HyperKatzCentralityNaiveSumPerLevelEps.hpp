@@ -61,6 +61,9 @@ public:
     /** Number of completed approximation iterations. */
     count iterationReached{0};
 
+    /** Number of skipped SpMVs */
+    count skippedSpMV{0};
+
 private:
     void doIteration();
     bool checkConvergence();
@@ -78,12 +81,11 @@ private:
     std::vector<double> levelAlphas;
     std::vector<double> levelTolerances;
     std::vector<Vector> currentPaths;
-    std::vector<Vector> lowerBound;
-    std::vector<Vector> upperBound;
     Vector msLowerBound;
     Vector msUpperBound;
     std::vector<edgeid> activeRanking;
-    count activeLevel;
+    count activeLevelCounter;
+    std::vector<bool> activeLevel;
 };
 
 } // namespace NetworKit

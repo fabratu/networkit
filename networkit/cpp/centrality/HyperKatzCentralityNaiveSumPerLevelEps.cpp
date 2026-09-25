@@ -3,6 +3,7 @@
 #include <cmath>
 #include <stdexcept>
 
+#include <networkit/auxiliary/Log.hpp>
 #include <networkit/centrality/HyperKatzCentralityNaiveSumPerLevelEps.hpp>
 
 namespace NetworKit {
@@ -31,7 +32,8 @@ HyperKatzCentralityNaiveSumPerLevelEps::HyperKatzCentralityNaiveSumPerLevelEps(
         levelAlphas.push_back(alpha);
 
         // Assume evenly split tolerances
-        levelTolerances.push_back(levelTol);
+        // levelTolerances.push_back(levelTol);
+        levelTolerances.push_back(rankTolerance);
     });
 
     if (levelMatrices.empty())
@@ -44,15 +46,20 @@ void HyperKatzCentralityNaiveSumPerLevelEps::run() {
 
     currentPaths.clear();
     currentPaths.reserve(levelMatrices.size());
-    lowerBound.clear();
-    lowerBound.reserve(levelMatrices.size());
-    upperBound.clear();
-    upperBound.reserve(levelMatrices.size());
+    // lowerBound.clear();
+    // lowerBound.reserve(levelMatrices.size());
+    // upperBound.clear();
+    // upperBound.reserve(levelMatrices.size());
+    // activeLevel.clear();
+    // activeLevel.reserve(levelMatrices.size());
     for (index i = 0; i < levelMatrices.size(); ++i) {
         currentPaths.emplace_back(dimension, 1.0);
-        lowerBound.emplace_back(dimension);
-        upperBound.emplace_back(dimension);
+        // lowerBound.emplace_back(dimension);
+        // upperBound.emplace_back(dimension);
+        // activeLevel.emplace_back(false);
     }
+
+    // activeLevelCounter = matrices.getMaxLevel();
 
     activeRanking.clear();
     activeRanking.reserve(hGraph.numberOfEdges());
@@ -60,8 +67,9 @@ void HyperKatzCentralityNaiveSumPerLevelEps::run() {
 
     msLowerBound = Vector(dimension, 0.0);
     msUpperBound = Vector(dimension, 0.0);
+
     iterationReached = 0;
-    activeLevel = matrices.getMaxLevel();
+    skippedSpMV = 0;
 
     do {
         doIteration();
@@ -112,38 +120,45 @@ bool HyperKatzCentralityNaiveSumPerLevelEps::areSufficientlyRanked(edgeid high, 
     return msLowerBound[high] > msUpperBound[low] - rankTolerance;
 }
 
-// TODO: Implement parallel iterator now, otherwise per eps is wasted
 void HyperKatzCentralityNaiveSumPerLevelEps::doIteration() {
     const count r = iterationReached + 1;
     const count dimension = hGraph.upperEdgeIdBound();
+    msUpperBound = Vector(dimension);
 
     for (index i = 0; i < levelMatrices.size(); ++i) {
-        currentPaths[i] = *levelMatrices[i] * currentPaths[i];
 
         const double alpha = levelAlphas[i];
         const count maxDegree = levelMaxDegrees[i];
         const double alphaPower = std::pow(alpha, static_cast<double>(r));
         const double nextAlphaPower = alpha * alphaPower;
         const double boundFactor = maxDegree / (1.0 - alpha * maxDegree);
+        skippedSpMV++;
 
-        lowerBound[i] += alphaPower * currentPaths[i];
-        upperBound[i] = lowerBound[i] + nextAlphaPower * boundFactor * currentPaths[i];
+        // Only update if threshold not yet reached for this level
+        if ((currentPaths[i].max() * nextAlphaPower * boundFactor) > levelTolerances[i]) {
+            currentPaths[i] = *levelMatrices[i] * currentPaths[i];
+            msLowerBound += alphaPower * currentPaths[i];
+            msUpperBound += nextAlphaPower * boundFactor * currentPaths[i];
+            skippedSpMV--;
+        }
     }
+
+    msUpperBound += msLowerBound;
 
     ++iterationReached;
 }
 
-bool HyperKatzCentralityNaiveSumPerLevelEps::checkGlobalConvergence() {
+// bool HyperKatzCentralityNaiveSumPerLevelEps::checkGlobalConvergence() {
 
-    if (activeLevel == 0)
-        return true;
+//     if (activeLevel == 0)
+//         return true;
 
-    for (index i = 0; i < levelMatrices.size(); ++i) {
-        // TODO: make checkconvergence check each level (?), maybe more efficient to check in
-        // doIteration for upperCorrection vs eps_s for every entry
-        checkConvergence;
-    }
-}
+//     for (index i = 0; i < levelMatrices.size(); ++i) {
+//         // TODO: make checkconvergence check each level (?), maybe more efficient to check in
+//         // doIteration for upperCorrection vs eps_s for every entry
+//         checkConvergence;
+//     }
+// }
 
 bool HyperKatzCentralityNaiveSumPerLevelEps::checkConvergence() {
     if (activeRanking.size() > k) {

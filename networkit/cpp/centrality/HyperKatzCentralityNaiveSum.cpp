@@ -42,11 +42,11 @@ void HyperKatzCentralityNaiveSum::run() {
 
     currentPaths.clear();
     currentPaths.reserve(levelMatrices.size());
-    lowerCorrection.clear();
-    lowerCorrection.reserve(levelMatrices.size());
+    // lowerCorrection.clear();
+    // lowerCorrection.reserve(levelMatrices.size());
     for (index i = 0; i < levelMatrices.size(); ++i) {
         currentPaths.emplace_back(dimension, 1.0);
-        lowerCorrection.emplace_back(dimension);
+        // lowerCorrection.emplace_back(dimension);
     }
 
     activeRanking.clear();

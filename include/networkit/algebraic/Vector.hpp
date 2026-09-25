@@ -93,6 +93,12 @@ public:
     double mean() const;
 
     /**
+     * Returns the max value of this vector
+     * @return The max value of this vector.
+     */
+    double max() const;
+
+    /**
      * Returns a reference to the element at index @a idx without checking the range of this vector.
      * @param idx The index of the element.
      * @return Reference to the element at index @a idx.
