@@ -17,6 +17,7 @@
 
 #include <networkit/auxiliary/Timer.hpp>
 #include <networkit/centrality/HyperKatzCentrality.hpp>
+#include <networkit/centrality/HyperKatzCentralityDeltaInPlace.hpp>
 #include <networkit/centrality/HyperKatzCentralityDeltaSum.hpp>
 #include <networkit/centrality/HyperKatzCentralityNaiveSum.hpp>
 #include <networkit/centrality/HyperKatzCentralityNaiveSumPerLevelEps.hpp>
@@ -26,7 +27,8 @@ namespace NetworKit {
 namespace {
 
 // constexpr auto inputPath = "input/abcdh-n10000-d2.5-5-50-c1.5-x0.5-q-2.0-2-20-wstrict.hmetis";
-constexpr auto inputPath = "input/edge-walmart-edge-label.hmetis";
+// constexpr auto inputPath = "input/edge-walmart-edge-label.hmetis";
+constexpr auto inputPath = "input/gene-disease.hmetis";
 constexpr count topK = 100;
 
 uint64_t residentSetBytes() noexcept {
@@ -91,8 +93,8 @@ TEST(HyperKatzCentralityBenchmark, benchmarkCodex) {
 #endif
 
     const Hypergraph hGraph = HMETISHypergraphReader{}.read(inputPath);
-    ASSERT_EQ(hGraph.numberOfNodes(), 88836);
-    ASSERT_EQ(hGraph.numberOfEdges(), 65898);
+    // ASSERT_EQ(hGraph.numberOfNodes(), 88836);
+    // ASSERT_EQ(hGraph.numberOfEdges(), 65898);
 
     PeakResidentMemorySampler memory;
     ASSERT_TRUE(memory.isSupported());
@@ -127,8 +129,8 @@ TEST(HyperKatzCentralityBenchmark, benchmarkNaiveSum) {
 #endif
 
     const Hypergraph hGraph = HMETISHypergraphReader{}.read(inputPath);
-    ASSERT_EQ(hGraph.numberOfNodes(), 88836);
-    ASSERT_EQ(hGraph.numberOfEdges(), 65898);
+    // ASSERT_EQ(hGraph.numberOfNodes(), 88836);
+    // ASSERT_EQ(hGraph.numberOfEdges(), 65898);
 
     PeakResidentMemorySampler memory;
     ASSERT_TRUE(memory.isSupported());
@@ -163,8 +165,8 @@ TEST(HyperKatzCentralityBenchmark, benchmarkNaiveSumPerLevelEps) {
 #endif
 
     const Hypergraph hGraph = HMETISHypergraphReader{}.read(inputPath);
-    ASSERT_EQ(hGraph.numberOfNodes(), 88836);
-    ASSERT_EQ(hGraph.numberOfEdges(), 65898);
+    // ASSERT_EQ(hGraph.numberOfNodes(), 88836);
+    // ASSERT_EQ(hGraph.numberOfEdges(), 65898);
 
     PeakResidentMemorySampler memory;
     ASSERT_TRUE(memory.isSupported());
@@ -202,8 +204,8 @@ TEST(HyperKatzCentralityBenchmark, benchmarkDeltaSum) {
 #endif
 
     const Hypergraph hGraph = HMETISHypergraphReader{}.read(inputPath);
-    ASSERT_EQ(hGraph.numberOfNodes(), 88836);
-    ASSERT_EQ(hGraph.numberOfEdges(), 65898);
+    // ASSERT_EQ(hGraph.numberOfNodes(), 88836);
+    // ASSERT_EQ(hGraph.numberOfEdges(), 65898);
 
     PeakResidentMemorySampler memory;
     ASSERT_TRUE(memory.isSupported());
@@ -213,6 +215,44 @@ TEST(HyperKatzCentralityBenchmark, benchmarkDeltaSum) {
     Aux::Timer timer;
     timer.start();
     auto centrality = std::make_unique<HyperKatzCentralityDeltaSum>(hGraph, topK, true);
+    centrality->run();
+    timer.stop();
+    memory.stop();
+
+    constexpr double bytesPerMiB = 1024.0 * 1024.0;
+    std::cout << "HyperKatzCentrality benchmark: " << hGraph.numberOfNodes() << " nodes, "
+              << hGraph.numberOfEdges() << " hyperedges, top-k=" << topK << '\n'
+              << "  runtime: " << timer.elapsedMilliseconds() << " ms\n"
+              << "  peak resident memory: " << static_cast<double>(memory.peakBytes()) / bytesPerMiB
+              << " MiB\n"
+              << "  additional resident memory after loading: "
+              << static_cast<double>(memory.additionalBytes()) / bytesPerMiB << " MiB\n"
+              << "  iterations: " << centrality->iterationReached
+              << " top 3 edges: " << centrality->top(0) << "," << centrality->top(1) << ","
+              << centrality->top(2) << " top 3 score: " << centrality->score(centrality->top(0))
+              << "," << centrality->score(centrality->top(1)) << ","
+              << centrality->score(centrality->top(2)) << std::endl;
+
+    EXPECT_TRUE(centrality->hasFinished());
+}
+
+TEST(HyperKatzCentralityBenchmark, benchmarkDeltaInPlace) {
+#if !defined(__APPLE__) && !defined(__linux__)
+    GTEST_SKIP() << "Resident-memory sampling is only available on macOS and Linux";
+#endif
+
+    const Hypergraph hGraph = HMETISHypergraphReader{}.read(inputPath);
+    // ASSERT_EQ(hGraph.numberOfNodes(), 88836);
+    // ASSERT_EQ(hGraph.numberOfEdges(), 65898);
+
+    PeakResidentMemorySampler memory;
+    ASSERT_TRUE(memory.isSupported());
+
+    Aux::Log::setLogLevel("INFO");
+
+    Aux::Timer timer;
+    timer.start();
+    auto centrality = std::make_unique<HyperKatzCentralityDeltaInPlace>(hGraph, topK, true);
     centrality->run();
     timer.stop();
     memory.stop();

@@ -5,7 +5,10 @@
 #include <vector>
 
 #include <networkit/Globals.hpp>
+#include <networkit/algebraic/ACSRMatrix.hpp>
 #include <networkit/algebraic/CSRMatrix.hpp>
+#include <networkit/algebraic/DCSRMatrix.hpp>
+#include <networkit/algebraic/VSRMatrix.hpp>
 #include <networkit/graph/Hypergraph.hpp>
 
 namespace NetworKit {
@@ -18,9 +21,14 @@ enum class SMatrixType { Level, Delta };
  *
  * Levels are built from one through one level beyond the maximum hyperedge intersection. Equal
  * s-level matrices are stored only once. Each non-empty s-delta matrix is stored separately, while
- * delta levels without interactions point to one shared empty matrix. The referenced hypergraph
- * must outlive this container.
+ * delta levels without interactions point to one shared empty matrix. ACSR storage is supported
+ * for delta matrices only; each level is stored separately because its value count equals the
+ * level. The referenced hypergraph must outlive this container.
+ *
+ * @tparam Matrix Matrix representation used for internal storage. CSRMatrix, DCSRMatrix, and
+ * ACSRMatrix are supported.
  */
+template <typename Matrix = CSRMatrix>
 class SMatrixContainer final {
 public:
     /**
@@ -33,9 +41,14 @@ public:
     /**
      * Builds the selected family of s-matrices for the current hypergraph.
      *
+     * When @a vsrMatrix is provided, it is replaced with a zero-initialized VSR matrix containing
+     * one row per hyperedge. The prefix length of a row is the maximum interaction level of the
+     * corresponding edge, or one if the edge has no interactions.
+     *
      * @param type Whether to build s-level or s-delta matrices.
+     * @param vsrMatrix Optional output for the per-edge variable sparse row matrix.
      */
-    void build(SMatrixType type = SMatrixType::Level);
+    void build(SMatrixType type = SMatrixType::Level, VSRMatrix *vsrMatrix = nullptr);
 
     /** Removes all matrices and level mappings from the container. */
     void reset() noexcept;
@@ -47,7 +60,7 @@ public:
      * @throws std::out_of_range If @a s is greater than getMaxLevel().
      * @throws std::runtime_error If build() has not been called since construction or reset().
      */
-    const CSRMatrix &getMatrix(count s) const;
+    const Matrix &getMatrix(count s) const;
 
     /** Returns the number of matrices physically stored by the container. */
     count numberOfMatrices() const noexcept { return matrices.size(); }
@@ -78,15 +91,66 @@ public:
             throw std::runtime_error("SMatrixContainer has not been built");
 
         for (count s = 1; s <= getMaxLevel(); ++s) {
-            const CSRMatrix &matrix = matrices[levelToMatrix[s - 1]];
-            if (matrix.nnz() != 0)
-                handle(s, matrix);
+            const Matrix &matrix = matrices[levelToMatrix[s - 1]];
+            // if (matrix.nnz() != 0)
+            handle(s, matrix);
+        }
+    }
+
+    template <typename L>
+    void forLevelsMutable(L handle) {
+        if (!built)
+            throw std::runtime_error("SMatrixContainer has not been built");
+
+        for (count s = 1; s <= getMaxLevel(); ++s) {
+            Matrix &matrix = matrices[levelToMatrix[s - 1]];
+            // if (matrix.nnz() != 0)
+            handle(s, matrix);
+        }
+    }
+
+    /**
+     * Iterates over all non-empty levels in descending order. The handler is called with the level
+     * and its corresponding matrix as <code>handle(s, matrix)</code>.
+     *
+     * @param handle Function called for every non-empty level.
+     * @throws std::runtime_error If the container has not been built.
+     */
+    template <typename L>
+    void forLevelsReverse(L handle) const {
+        if (!built)
+            throw std::runtime_error("SMatrixContainer has not been built");
+
+        for (count s = getMaxLevel(); s >= 1; --s) {
+            const Matrix &matrix = matrices[levelToMatrix[s - 1]];
+            // if (matrix.nnz() != 0)
+            handle(s, matrix);
+        }
+    }
+
+    /**
+     * Iterates over all non-empty levels in descending order until a certain level. The
+     * handler is called with the level and its corresponding matrix as <code>handle(s,
+     * matrix)</code>.
+     *
+     * @param handle Function called for every non-empty level.
+     * @throws std::runtime_error If the container has not been built.
+     */
+    template <typename L>
+    void forLevelsReverseUntil(index bound, L handle) const {
+        if (!built)
+            throw std::runtime_error("SMatrixContainer has not been built");
+
+        for (count s = getMaxLevel(); s >= bound; --s) {
+            const Matrix &matrix = matrices[levelToMatrix[s - 1]];
+            // if (matrix.nnz() != 0)
+            handle(s, matrix);
         }
     }
 
 private:
     const Hypergraph &hGraph;
-    std::vector<CSRMatrix> matrices;
+    std::vector<Matrix> matrices;
     std::vector<index> levelToMatrix;
     SMatrixType type{SMatrixType::Level};
     bool built{false};

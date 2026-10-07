@@ -5,12 +5,12 @@
 #include <stdexcept>
 
 #include <networkit/auxiliary/Log.hpp>
-#include <networkit/centrality/HyperKatzCentralityDeltaSum.hpp>
+#include <networkit/centrality/HyperKatzCentralityDeltaInPlace.hpp>
 
 namespace NetworKit {
 
-HyperKatzCentralityDeltaSum::HyperKatzCentralityDeltaSum(const Hypergraph &hGraph, count k,
-                                                         bool groupOnly, double tolerance)
+HyperKatzCentralityDeltaInPlace::HyperKatzCentralityDeltaInPlace(const Hypergraph &hGraph, count k,
+                                                                 bool groupOnly, double tolerance)
     : hGraph{hGraph}, matrices{hGraph}, k{k}, groupOnly{groupOnly}, rankTolerance{tolerance} {
     if (k == 0 || k > hGraph.numberOfEdges())
         throw std::invalid_argument("k must be between one and the number of hyperedges");
@@ -27,7 +27,7 @@ HyperKatzCentralityDeltaSum::HyperKatzCentralityDeltaSum(const Hypergraph &hGrap
 
     // This actually overestimates the maxDegree. For correct result, we need the level matrices (or
     // store the correct value in SMatrixContainer when building delta matrices)
-    matrices.forLevels([&](count s, const CSRMatrix &matrix) {
+    matrices.forLevels([&](count s, const ACSRMatrix &matrix) {
         const NetworKit::DCSRMatrix &levelRef = maxDegBuilder.getMatrix(s);
         const Vector degrees = levelRef * ones;
         maxDegree = degrees.max();
@@ -47,22 +47,30 @@ HyperKatzCentralityDeltaSum::HyperKatzCentralityDeltaSum(const Hypergraph &hGrap
             "At least one non-empty s-level matrix is required for HyperKatzCentrality");
 }
 
-void HyperKatzCentralityDeltaSum::run() {
+void HyperKatzCentralityDeltaInPlace::run() {
     std::chrono::steady_clock::time_point begin = std::chrono::steady_clock::now();
     const count dimension = hGraph.upperEdgeIdBound();
 
-    currentPaths.clear();
-    currentPaths.reserve(matrices.getMaxLevel());
-    for (index i = 0; i < matrices.getMaxLevel(); ++i) {
-        currentPaths.emplace_back(dimension, 1.0);
-    }
+    currentPaths = DenseMatrix(dimension, matrices.getMaxLevel(), 0.0);
 
     activeRanking.clear();
     activeRanking.reserve(hGraph.numberOfEdges());
     hGraph.forEdges([&](edgeid eid) { activeRanking.push_back(eid); });
 
     msLowerBound = Vector(dimension, 0.0);
-    msUpperBound = Vector(dimension, 0.0);
+    // msUpperBound = Vector(dimension, 0.0);
+
+    lowerCorrection = Vector(matrices.getMaxLevel(), 0.0);
+    upperCorrection = Vector(matrices.getMaxLevel(), 0.0);
+    auto lowerSetter = [&](int i, double &element) { element = levelAlphas[i]; };
+    auto upperSetter = [&](int i, double &element) {
+        double alpha = levelAlphas[i];
+        double deg = levelMaxDegrees[i];
+        element = std::pow(alpha, 2.0) * deg / (1.0 - alpha * deg);
+    };
+
+    lowerCorrection.parallelForElements(lowerSetter);
+    upperCorrection.parallelForElements(upperSetter);
 
     iterationReached = 0;
 
@@ -73,17 +81,17 @@ void HyperKatzCentralityDeltaSum::run() {
     hasRun = true;
 }
 
-const Vector &HyperKatzCentralityDeltaSum::scores() const {
+const Vector &HyperKatzCentralityDeltaInPlace::scores() const {
     assureFinished();
     return msLowerBound;
 }
 
-double HyperKatzCentralityDeltaSum::score(edgeid eid) const {
+double HyperKatzCentralityDeltaInPlace::score(edgeid eid) const {
     assureFinished();
     return msLowerBound[eid];
 }
 
-std::vector<std::pair<edgeid, double>> HyperKatzCentralityDeltaSum::ranking() const {
+std::vector<std::pair<edgeid, double>> HyperKatzCentralityDeltaInPlace::ranking() const {
     assureFinished();
     std::vector<std::pair<edgeid, double>> result;
     result.reserve(hGraph.numberOfEdges());
@@ -94,68 +102,64 @@ std::vector<std::pair<edgeid, double>> HyperKatzCentralityDeltaSum::ranking() co
     return result;
 }
 
-edgeid HyperKatzCentralityDeltaSum::top(count n) const {
+edgeid HyperKatzCentralityDeltaInPlace::top(count n) const {
     assureFinished();
     return activeRanking.at(n);
 }
 
-double HyperKatzCentralityDeltaSum::bound(edgeid eid) const {
+double HyperKatzCentralityDeltaInPlace::bound(edgeid eid) const {
     assureFinished();
     return msUpperBound[eid];
 }
 
-bool HyperKatzCentralityDeltaSum::areDistinguished(edgeid eid1, edgeid eid2) const {
+bool HyperKatzCentralityDeltaInPlace::areDistinguished(edgeid eid1, edgeid eid2) const {
     assureFinished();
     if (msLowerBound[eid1] < msLowerBound[eid2])
         std::swap(eid1, eid2);
     return msLowerBound[eid1] > msLowerBound[eid2];
 }
 
-bool HyperKatzCentralityDeltaSum::areSufficientlyRanked(edgeid high, edgeid low) const {
+bool HyperKatzCentralityDeltaInPlace::areSufficientlyRanked(edgeid high, edgeid low) const {
     return msLowerBound[high] > msUpperBound[low] - rankTolerance;
 }
 
-void HyperKatzCentralityDeltaSum::doIteration() {
+void HyperKatzCentralityDeltaInPlace::doIteration() {
     const count r = iterationReached + 1;
     const count dimension = hGraph.upperEdgeIdBound();
-    msUpperBound = Vector(dimension);
-    Vector deltaCorrection = Vector(dimension);
+    matrices.getMatrix(matrices.getMaxLevel()).resetOther(currentPaths);
 
-    for (index level = 1; level <= matrices.getMaxLevel(); ++level) {
-        deltaCorrection.fill(0.0);
-        matrices.forLevelsReverseUntil(level, [&](count s, const CSRMatrix &matrix) {
-            if (matrix.nnz() > 0)
-                deltaCorrection += matrix * currentPaths[level - 1];
-        });
+    matrices.forLevelsMutable(
+        [&](count s, ACSRMatrix &matrix) { matrix.updateOther(currentPaths); });
 
-        currentPaths[level - 1] = deltaCorrection;
-        const double alpha = levelAlphas[level - 1];
-        const count maxDegree = levelMaxDegrees[level - 1];
-        const double alphaPower = std::pow(alpha, static_cast<double>(r));
-        const double nextAlphaPower = alpha * alphaPower;
-        const double boundFactor = maxDegree / (1.0 - alpha * maxDegree);
-        msLowerBound += alphaPower * currentPaths[level - 1];
-        msUpperBound += nextAlphaPower * boundFactor * currentPaths[level - 1];
-    }
-
+    msLowerBound += currentPaths * lowerCorrection;
+    msUpperBound = currentPaths * upperCorrection;
     msUpperBound += msLowerBound;
+
+    // INFO("LowerBound: ", msLowerBound);
+    // INFO("UpperBound: ", msUpperBound);
+    // INFO("Iter: ", r);
+    // INFO("LowerCorrection: ", lowerCorrection);
+    // INFO("UpperCorrection: ", upperCorrection);
+    // INFO("Current paths first edge: ", currentPaths.row(0));
+    // INFO("Current paths last edge: ", currentPaths.row(currentPaths.numberOfRows() - 1));
+
+    auto lowerSetter = [&](int i, double &element) { element *= levelAlphas[i]; };
+    auto upperSetter = [&](int i, double &element) {
+        double alpha = levelAlphas[i];
+        double alphaPower = std::pow(alpha, static_cast<double>(r + 1));
+        double deg = levelMaxDegrees[i];
+        element = alphaPower * alpha * deg / (1.0 - alpha * deg);
+    };
+
+    lowerCorrection.parallelForElements(lowerSetter);
+    upperCorrection.parallelForElements(upperSetter);
+
+    matrices.forLevelsMutable([&](count s, ACSRMatrix &matrix) { matrix.assign(currentPaths); });
 
     ++iterationReached;
 }
 
-// bool HyperKatzCentralityNaiveSumPerLevelEps::checkGlobalConvergence() {
-
-//     if (activeLevel == 0)
-//         return true;
-
-//     for (index i = 0; i < levelMatrices.size(); ++i) {
-//         // TODO: make checkconvergence check each level (?), maybe more efficient to check in
-//         // doIteration for upperCorrection vs eps_s for every entry
-//         checkConvergence;
-//     }
-// }
-
-bool HyperKatzCentralityDeltaSum::checkConvergence() {
+bool HyperKatzCentralityDeltaInPlace::checkConvergence() {
     if (activeRanking.size() > k) {
         std::partial_sort(
             activeRanking.begin(), activeRanking.begin() + k, activeRanking.end(),
@@ -168,16 +172,19 @@ bool HyperKatzCentralityDeltaSum::checkConvergence() {
             activeRanking.end());
     }
 
-    if (activeRanking.size() > k)
+    if (activeRanking.size() > k) {
         return false;
+    }
+
     if (groupOnly)
         return true;
 
     std::sort(activeRanking.begin(), activeRanking.end(),
               [&](edgeid eid1, edgeid eid2) { return msLowerBound[eid1] > msLowerBound[eid2]; });
     for (index j = 1; j < activeRanking.size(); ++j) {
-        if (!areSufficientlyRanked(activeRanking[j - 1], activeRanking[j]))
+        if (!areSufficientlyRanked(activeRanking[j - 1], activeRanking[j])) {
             return false;
+        }
     }
 
     return true;

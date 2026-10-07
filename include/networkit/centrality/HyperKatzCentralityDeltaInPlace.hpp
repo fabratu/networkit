@@ -1,10 +1,11 @@
-#ifndef NETWORKIT_CENTRALITY_HYPER_KATZ_CENTRALITY_HPP_
-#define NETWORKIT_CENTRALITY_HYPER_KATZ_CENTRALITY_HPP_
+#ifndef NETWORKIT_CENTRALITY_HYPER_KATZ_CENTRALITY_DELTA_IN_PLACE_HPP_
+#define NETWORKIT_CENTRALITY_HYPER_KATZ_CENTRALITY_DELTA_IN_PLACE_HPP_
 
 #include <utility>
 #include <vector>
 
 #include <networkit/Globals.hpp>
+#include <networkit/algebraic/DenseMatrix.hpp>
 #include <networkit/algebraic/Vector.hpp>
 #include <networkit/base/Algorithm.hpp>
 #include <networkit/graph/Hypergraph.hpp>
@@ -24,7 +25,7 @@ namespace NetworKit {
  *
  * @see https://doi.org/10.4230/LIPIcs.ESA.2018.42
  */
-class HyperKatzCentrality final : public Algorithm {
+class HyperKatzCentralityDeltaInPlace final : public Algorithm {
 public:
     /**
      * Constructs the algorithm for @a hGraph. Each non-empty level receives a damping factor
@@ -35,13 +36,13 @@ public:
      * @param groupOnly Whether only membership in the top-k, rather than its order, is required.
      * @param tolerance Ranking tolerance used by the convergence test.
      */
-    HyperKatzCentrality(const Hypergraph &hGraph, count k, bool groupOnly = false,
-                        double tolerance = 1e-9);
+    HyperKatzCentralityDeltaInPlace(const Hypergraph &hGraph, count k, bool groupOnly = false,
+                                    double tolerance = 1e-9);
 
     void run() override;
 
     /** Returns scores indexed by hyperedge id. */
-    const std::vector<double> &scores() const;
+    const Vector &scores() const;
 
     /** Returns the score of hyperedge @a eid. */
     double score(edgeid eid) const;
@@ -52,22 +53,11 @@ public:
     /** Returns the hyperedge at position @a n in the computed top-k ranking. */
     edgeid top(count n = 0) const;
 
-    /** Returns the upper Katz bound of hyperedge @a eid. */
+    // /** Returns the upper Katz bound of hyperedge @a eid. */
     double bound(edgeid eid) const;
 
     /** Returns whether the bounds establish an order between two hyperedges. */
     bool areDistinguished(edgeid eid1, edgeid eid2) const;
-
-    /**
-     * Returns the damping factor selected for level @a s.
-     *
-     * @throws std::invalid_argument If the level's matrix is empty.
-     * @throws std::out_of_range If @a s is outside the container's levels.
-     */
-    double getAlpha(count s) const;
-
-    /** Path-count vectors produced by the approximation iterations. */
-    std::vector<Vector> nPaths;
 
     /** Number of completed approximation iterations. */
     count iterationReached{0};
@@ -78,22 +68,25 @@ private:
     bool areSufficientlyRanked(edgeid high, edgeid low) const;
 
     const Hypergraph &hGraph;
-    SMatrixContainer<> matrices;
+    SMatrixContainer<ACSRMatrix> matrices;
     const count k;
     const bool groupOnly;
     const double rankTolerance;
 
-    std::vector<const CSRMatrix *> levelMatrices;
     std::vector<count> levelMaxDegrees;
     std::vector<double> levelAlphas;
-    std::vector<double> alphaByLevel;
-    std::vector<Vector> currentPaths;
-    std::vector<double> scoreData;
-    std::vector<double> baseData;
-    std::vector<double> boundData;
+    std::vector<double> levelTolerances;
+    // std::vector<Vector> currentPaths;
+    DenseMatrix currentPaths;
+    Vector msLowerBound;
+    Vector msUpperBound;
+    Vector lowerCorrection;
+    Vector upperCorrection;
     std::vector<edgeid> activeRanking;
+    count activeLevelCounter;
+    std::vector<bool> activeLevel;
 };
 
 } // namespace NetworKit
 
-#endif // NETWORKIT_CENTRALITY_HYPER_KATZ_CENTRALITY_HPP_
+#endif // NETWORKIT_CENTRALITY_HYPER_KATZ_CENTRALITY_DELTA_IN_PLACE_HPP_

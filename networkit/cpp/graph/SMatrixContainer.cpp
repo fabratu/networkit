@@ -1,12 +1,14 @@
 #include <algorithm>
 #include <stdexcept>
+#include <type_traits>
 #include <unordered_map>
 
 #include <networkit/graph/SMatrixContainer.hpp>
 
 namespace NetworKit {
 
-void SMatrixContainer::build(SMatrixType matrixType) {
+template <typename Matrix>
+void SMatrixContainer<Matrix>::build(SMatrixType matrixType, VSRMatrix *vsrMatrix) {
     reset();
 
     const count dimension = hGraph.upperEdgeIdBound();
@@ -28,25 +30,80 @@ void SMatrixContainer::build(SMatrixType matrixType) {
 
     levelToMatrix.reserve(maximumIntersection + 1);
     if (matrixType == SMatrixType::Level) {
-        // A level matrix changes from s - 1 to s exactly when a pair has intersection size s - 1.
-        std::vector<bool> changesAtLevel(maximumIntersection + 2, false);
-        changesAtLevel[1] = true;
-        changesAtLevel[maximumIntersection + 1] = true;
-        for (const auto &row : intersectionSizes) {
-            for (const auto &entry : row)
-                changesAtLevel[entry.second + 1] = true;
-        }
+        if constexpr (std::is_same_v<Matrix, ACSRMatrix>) {
+            throw std::invalid_argument("ACSRMatrix storage is only supported for delta matrices");
+        } else {
+            // A level matrix changes from s - 1 to s exactly when a pair has intersection size
+            // s - 1.
+            std::vector<bool> changesAtLevel(maximumIntersection + 2, false);
+            changesAtLevel[1] = true;
+            changesAtLevel[maximumIntersection + 1] = true;
+            for (const auto &row : intersectionSizes) {
+                for (const auto &entry : row)
+                    changesAtLevel[entry.second + 1] = true;
+            }
 
-        for (count s = 1; s <= maximumIntersection + 1; ++s) {
-            if (changesAtLevel[s]) {
+            for (count s = 1; s <= maximumIntersection + 1; ++s) {
+                if (changesAtLevel[s]) {
+                    std::vector<Triplet> triplets;
+                    for (edgeid eid1 = 0; eid1 < intersectionSizes.size(); ++eid1) {
+                        for (const auto &[eid2, intersectionSize] : intersectionSizes[eid1]) {
+                            if (intersectionSize >= s) {
+                                triplets.push_back({eid1, eid2, 1.0});
+                                triplets.push_back({eid2, eid1, 1.0});
+                            }
+                        }
+                    }
+
+                    std::sort(triplets.begin(), triplets.end(),
+                              [](const Triplet &lhs, const Triplet &rhs) {
+                                  return lhs.row < rhs.row
+                                         || (lhs.row == rhs.row && lhs.column < rhs.column);
+                              });
+                    matrices.emplace_back(dimension, triplets, 0.0, true);
+                }
+
+                levelToMatrix.push_back(matrices.size() - 1);
+            }
+        }
+    } else {
+        if constexpr (std::is_same_v<Matrix, ACSRMatrix>) {
+            for (count s = 1; s <= maximumIntersection + 1; ++s) {
+                std::vector<ACSRTriplet> triplets;
+                for (edgeid eid1 = 0; eid1 < intersectionSizes.size(); ++eid1) {
+                    for (const auto &[eid2, intersectionSize] : intersectionSizes[eid1]) {
+                        if (intersectionSize == s) {
+                            triplets.push_back({eid1, eid2, std::vector<double>(s, 1.0)});
+                            triplets.push_back({eid2, eid1, std::vector<double>(s, 1.0)});
+                        }
+                    }
+                }
+
+                std::sort(triplets.begin(), triplets.end(), [](const auto &lhs, const auto &rhs) {
+                    return lhs.row < rhs.row || (lhs.row == rhs.row && lhs.column < rhs.column);
+                });
+                matrices.emplace_back(dimension, triplets, s, true);
+                levelToMatrix.push_back(matrices.size() - 1);
+            }
+        } else {
+            // All delta levels without an exact interaction share this matrix.
+            matrices.emplace_back(dimension);
+            constexpr index emptyMatrixIndex = 0;
+
+            for (count s = 1; s <= maximumIntersection + 1; ++s) {
                 std::vector<Triplet> triplets;
                 for (edgeid eid1 = 0; eid1 < intersectionSizes.size(); ++eid1) {
                     for (const auto &[eid2, intersectionSize] : intersectionSizes[eid1]) {
-                        if (intersectionSize >= s) {
+                        if (intersectionSize == s) {
                             triplets.push_back({eid1, eid2, 1.0});
                             triplets.push_back({eid2, eid1, 1.0});
                         }
                     }
+                }
+
+                if (triplets.empty()) {
+                    levelToMatrix.push_back(emptyMatrixIndex);
+                    continue;
                 }
 
                 std::sort(
@@ -54,50 +111,43 @@ void SMatrixContainer::build(SMatrixType matrixType) {
                         return lhs.row < rhs.row || (lhs.row == rhs.row && lhs.column < rhs.column);
                     });
                 matrices.emplace_back(dimension, triplets, 0.0, true);
+                levelToMatrix.push_back(matrices.size() - 1);
             }
-
-            levelToMatrix.push_back(matrices.size() - 1);
         }
-    } else {
-        // All delta levels without an exact interaction share this matrix.
-        matrices.emplace_back(dimension);
-        constexpr index emptyMatrixIndex = 0;
+    }
 
-        for (count s = 1; s <= maximumIntersection + 1; ++s) {
-            std::vector<Triplet> triplets;
-            for (edgeid eid1 = 0; eid1 < intersectionSizes.size(); ++eid1) {
-                for (const auto &[eid2, intersectionSize] : intersectionSizes[eid1]) {
-                    if (intersectionSize == s) {
-                        triplets.push_back({eid1, eid2, 1.0});
-                        triplets.push_back({eid2, eid1, 1.0});
-                    }
-                }
+    if (vsrMatrix != nullptr) {
+        std::vector<count> maximumLevels(dimension, 1);
+        for (edgeid eid1 = 0; eid1 < intersectionSizes.size(); ++eid1) {
+            for (const auto &[eid2, intersectionSize] : intersectionSizes[eid1]) {
+                maximumLevels[eid1] = std::max(maximumLevels[eid1], intersectionSize);
+                maximumLevels[eid2] = std::max(maximumLevels[eid2], intersectionSize);
             }
-
-            if (triplets.empty()) {
-                levelToMatrix.push_back(emptyMatrixIndex);
-                continue;
-            }
-
-            std::sort(triplets.begin(), triplets.end(), [](const Triplet &lhs, const Triplet &rhs) {
-                return lhs.row < rhs.row || (lhs.row == rhs.row && lhs.column < rhs.column);
-            });
-            matrices.emplace_back(dimension, triplets, 0.0, true);
-            levelToMatrix.push_back(matrices.size() - 1);
         }
+
+        std::vector<count> rowLengths;
+        rowLengths.reserve(hGraph.numberOfEdges());
+        hGraph.forEdges([&](edgeid eid) { rowLengths.push_back(maximumLevels[eid]); });
+
+        const count maximumRowLength =
+            rowLengths.empty() ? 1 : *std::max_element(rowLengths.begin(), rowLengths.end());
+        *vsrMatrix =
+            VSRMatrix(hGraph.numberOfEdges(), maximumRowLength + 1, maximumRowLength, rowLengths);
     }
 
     type = matrixType;
     built = true;
 }
 
-void SMatrixContainer::reset() noexcept {
+template <typename Matrix>
+void SMatrixContainer<Matrix>::reset() noexcept {
     matrices.clear();
     levelToMatrix.clear();
     built = false;
 }
 
-const CSRMatrix &SMatrixContainer::getMatrix(count s) const {
+template <typename Matrix>
+const Matrix &SMatrixContainer<Matrix>::getMatrix(count s) const {
     if (s == 0)
         throw std::invalid_argument("The s-level must be positive");
 
@@ -110,11 +160,16 @@ const CSRMatrix &SMatrixContainer::getMatrix(count s) const {
     return matrices[levelToMatrix[s - 1]];
 }
 
-SMatrixType SMatrixContainer::getType() const {
+template <typename Matrix>
+SMatrixType SMatrixContainer<Matrix>::getType() const {
     if (!built)
         throw std::runtime_error("SMatrixContainer has not been built");
 
     return type;
 }
+
+template class SMatrixContainer<CSRMatrix>;
+template class SMatrixContainer<DCSRMatrix>;
+template class SMatrixContainer<ACSRMatrix>;
 
 } // namespace NetworKit

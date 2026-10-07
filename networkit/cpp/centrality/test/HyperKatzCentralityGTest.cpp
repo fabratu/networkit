@@ -1,7 +1,11 @@
 #include <gtest/gtest.h>
 
 #include <networkit/centrality/HyperKatzCentrality.hpp>
+#include <networkit/centrality/HyperKatzCentralityDeltaInPlace.hpp>
+#include <networkit/centrality/HyperKatzCentralityDeltaSum.hpp>
+#include <networkit/centrality/HyperKatzCentralityNaiveSum.hpp>
 #include <networkit/graph/Hypergraph.hpp>
+#include <networkit/io/HMETISHypergraphReader.hpp>
 
 namespace NetworKit {
 
@@ -60,6 +64,41 @@ TEST(HyperKatzCentralityGTest, testTopKAndValidation) {
     disconnected.addEdge({0});
     disconnected.addEdge({1});
     EXPECT_THROW(HyperKatzCentrality(disconnected, 1), std::runtime_error);
+}
+TEST(HyperKatzCentralityGTest, testDeltaInPlace) {
+    Aux::Log::setLogLevel("INFO");
+    const Hypergraph hGraph = HMETISHypergraphReader{}.read("input/gene-disease.hmetis");
+    // const Hypergraph hGraph =
+    // HMETISHypergraphReader{}.read("input/edge-walmart-edge-label.hmetis");
+
+    HyperKatzCentralityDeltaInPlace centrality(hGraph, 100);
+    centrality.run();
+    INFO("Top 3 score: ", centrality.score(centrality.top(0)), ",",
+         centrality.score(centrality.top(1)), ",", centrality.score(centrality.top(2)));
+}
+
+TEST(HyperKatzCentralityGTest, testDeltaSum) {
+    Aux::Log::setLogLevel("INFO");
+    const Hypergraph hGraph = HMETISHypergraphReader{}.read("input/gene-disease.hmetis");
+    // const Hypergraph hGraph =
+    // HMETISHypergraphReader{}.read("input/edge-walmart-edge-label.hmetis");
+
+    HyperKatzCentralityDeltaSum centrality(hGraph, 100);
+    centrality.run();
+    INFO("Top 3 score: ", centrality.score(centrality.top(0)), ",",
+         centrality.score(centrality.top(1)), ",", centrality.score(centrality.top(2)));
+}
+
+TEST(HyperKatzCentralityGTest, testNaiveSum) {
+    Aux::Log::setLogLevel("INFO");
+    const Hypergraph hGraph = HMETISHypergraphReader{}.read("input/gene-disease.hmetis");
+    // const Hypergraph hGraph =
+    // HMETISHypergraphReader{}.read("input/edge-walmart-edge-label.hmetis");
+
+    HyperKatzCentralityNaiveSum centrality(hGraph, 100);
+    centrality.run();
+    INFO("Top 3 score: ", centrality.score(centrality.top(0)), ",",
+         centrality.score(centrality.top(1)), ",", centrality.score(centrality.top(2)));
 }
 
 } // namespace NetworKit

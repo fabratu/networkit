@@ -67,12 +67,12 @@ private:
     bool areSufficientlyRanked(edgeid high, edgeid low) const;
 
     const Hypergraph &hGraph;
-    SMatrixContainer matrices;
+    SMatrixContainer<CSRMatrix> matrices;
     const count k;
     const bool groupOnly;
     const double rankTolerance;
 
-    std::vector<const CSRMatrix *> deltaMatrices;
+    // std::vector<const CSRMatrix *> deltaMatrices;
     std::vector<count> levelMaxDegrees;
     std::vector<double> levelAlphas;
     std::vector<double> levelTolerances;

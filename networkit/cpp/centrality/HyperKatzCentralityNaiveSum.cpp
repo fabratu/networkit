@@ -1,8 +1,10 @@
 #include <algorithm>
 #include <cfloat>
+#include <chrono>
 #include <cmath>
 #include <stdexcept>
 
+#include <networkit/auxiliary/Log.hpp>
 #include <networkit/centrality/HyperKatzCentralityNaiveSum.hpp>
 
 namespace NetworKit {
@@ -15,11 +17,19 @@ HyperKatzCentralityNaiveSum::HyperKatzCentralityNaiveSum(const Hypergraph &hGrap
     if (tolerance < 0)
         throw std::invalid_argument("The ranking tolerance must be non-negative");
 
+    std::chrono::steady_clock::time_point begin = std::chrono::steady_clock::now();
     matrices.build(SMatrixType::Level);
+    std::chrono::steady_clock::time_point end = std::chrono::steady_clock::now();
+    INFO("Hypergraph: (", hGraph.numberOfNodes(), ",", hGraph.numberOfEdges(), ")");
+    INFO("Time to build As: ",
+         std::chrono::duration_cast<std::chrono::milliseconds>(end - begin).count(), "[ms]");
+    INFO("Level matrices max level: ", matrices.getMaxLevel());
+    INFO("Level matrices num level: ", matrices.numberOfMatrices());
 
     Vector ones(hGraph.upperEdgeIdBound(), 1.0);
     alphaByLevel.resize(matrices.getMaxLevel(), 0.0);
     matrices.forLevels([&](count s, const CSRMatrix &matrix) {
+        // INFO("Level: ", s, " Num edges: ", matrix.nnz());
         const Vector degrees = matrix * ones;
         count maxDegree = 0;
         hGraph.forEdges(
@@ -38,6 +48,7 @@ HyperKatzCentralityNaiveSum::HyperKatzCentralityNaiveSum(const Hypergraph &hGrap
 }
 
 void HyperKatzCentralityNaiveSum::run() {
+    std::chrono::steady_clock::time_point begin = std::chrono::steady_clock::now();
     const count dimension = hGraph.upperEdgeIdBound();
 
     currentPaths.clear();
@@ -59,9 +70,12 @@ void HyperKatzCentralityNaiveSum::run() {
 
     do {
         doIteration();
-    } while (!checkConvergence());
+    } while (!checkConvergence() && iterationReached < 5);
 
     hasRun = true;
+    std::chrono::steady_clock::time_point end = std::chrono::steady_clock::now();
+    INFO("Time to run: ",
+         std::chrono::duration_cast<std::chrono::milliseconds>(end - begin).count(), "[ms]");
 }
 
 const Vector &HyperKatzCentralityNaiveSum::scores() const {
@@ -139,6 +153,19 @@ void HyperKatzCentralityNaiveSum::doIteration() {
     }
 
     msUpperBound += msLowerBound;
+
+    INFO("LowerBound: ", msLowerBound);
+    INFO("UpperBound: ", msUpperBound);
+
+    Vector firstEntry = Vector(levelMatrices.size(), 0.0);
+    Vector lastEntry = Vector(levelMatrices.size(), 0.0);
+    for (int i = 0; i < levelMatrices.size(); i++) {
+        lastEntry[i] = currentPaths[i][dimension - 1];
+        firstEntry[i] = currentPaths[i][0];
+    }
+
+    INFO("Current paths first edge: ", firstEntry);
+    INFO("Current paths last edge: ", lastEntry);
 
     ++iterationReached;
 }

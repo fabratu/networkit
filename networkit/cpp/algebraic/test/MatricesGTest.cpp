@@ -6,14 +6,18 @@
  */
 
 #include <type_traits>
+#include <utility>
 
 #include <gtest/gtest.h>
 
+#include <networkit/algebraic/ACSRMatrix.hpp>
 #include <networkit/algebraic/AlgebraicGlobals.hpp>
 #include <networkit/algebraic/CSRMatrix.hpp>
+#include <networkit/algebraic/DCSRMatrix.hpp>
 #include <networkit/algebraic/DenseMatrix.hpp>
 #include <networkit/algebraic/DynamicMatrix.hpp>
 #include <networkit/algebraic/MatrixTools.hpp>
+#include <networkit/algebraic/VSRMatrix.hpp>
 #include <networkit/algebraic/Vector.hpp>
 #include <networkit/auxiliary/Random.hpp>
 #include <networkit/graph/Graph.hpp>
@@ -22,6 +26,138 @@
 namespace NetworKit {
 
 namespace {
+
+TEST(VSRMatrixGTest, testConstructionAndSpMV) {
+    const std::vector<count> kValues = {1, 3, 2};
+    const Vector vector({1.0, 2.0, 3.0, 4.0, 5.0});
+
+    const VSRMatrix explicitK(3, 5, 3, kValues);
+    EXPECT_EQ(explicitK * vector, Vector(3, 0.0));
+
+    const VSRMatrix trailingK(3, 5, kValues, 3);
+    EXPECT_EQ(trailingK * vector, Vector(3, 0.0));
+
+    const VSRMatrix inferredK(3, 5, kValues);
+    EXPECT_EQ(inferredK * vector, Vector(3, 0.0));
+}
+
+TEST(VSRMatrixGTest, testConstructorValidation) {
+    EXPECT_THROW(VSRMatrix(3, 5, 0, std::vector<count>{1, 2, 3}), std::invalid_argument);
+    EXPECT_THROW(VSRMatrix(3, 5, 5, std::vector<count>{1, 2, 3}), std::invalid_argument);
+    EXPECT_THROW(VSRMatrix(3, 5, 3, std::vector<count>{1, 2}), std::invalid_argument);
+    EXPECT_THROW(VSRMatrix(3, 5, 3, std::vector<count>{1, 0, 2}), std::invalid_argument);
+    EXPECT_THROW(VSRMatrix(3, 5, 2, std::vector<count>{1, 3, 2}), std::invalid_argument);
+    EXPECT_THROW(VSRMatrix(0, 5, std::vector<count>{}), std::invalid_argument);
+}
+
+TEST(ACSRMatrixGTest, testConstructors) {
+    EXPECT_NO_THROW(ACSRMatrix{});
+    EXPECT_NO_THROW(ACSRMatrix(4, 2));
+    EXPECT_NO_THROW(ACSRMatrix(3, 4, 2));
+
+    const std::vector<ACSRTriplet> triplets = {{2, 1, {3.0, 4.0}}, {0, 3, {1.0, 2.0}}};
+    EXPECT_NO_THROW(ACSRMatrix(4, 2, triplets));
+    EXPECT_NO_THROW(ACSRMatrix(3, 4, 2, triplets));
+    EXPECT_NO_THROW(ACSRMatrix(4, triplets, 2));
+    EXPECT_NO_THROW(ACSRMatrix(3, 4, triplets, 2));
+
+    const std::vector<std::vector<index>> columns = {{3}, {}, {1}};
+    const std::vector<std::vector<std::vector<double>>> values = {{{1.0, 2.0}}, {}, {{3.0, 4.0}}};
+    EXPECT_NO_THROW(ACSRMatrix(3, 4, 2, columns, values));
+    EXPECT_NO_THROW(ACSRMatrix(3, 4, columns, values, 2));
+
+    const std::vector<index> rowIdx = {0, 1, 1, 2};
+    const std::vector<index> columnIdx = {3, 1};
+    const std::vector<std::vector<double>> nonZeros = {{1.0, 2.0}, {3.0, 4.0}};
+    const ACSRMatrix fromCsr(3, 4, 2, rowIdx, columnIdx, nonZeros);
+    EXPECT_NO_THROW(ACSRMatrix(3, 4, rowIdx, columnIdx, nonZeros, 2));
+    const std::vector<double> flatNonZeros = {1.0, 2.0, 3.0, 4.0};
+    EXPECT_NO_THROW(ACSRMatrix(3, 4, 2, rowIdx, columnIdx, flatNonZeros));
+    EXPECT_NO_THROW(ACSRMatrix(3, 4, rowIdx, columnIdx, flatNonZeros, 2));
+
+    ACSRMatrix copied(fromCsr);
+    ACSRMatrix moved(std::move(copied));
+    copied = fromCsr;
+    moved = std::move(copied);
+}
+
+TEST(ACSRMatrixGTest, testConstructorValidation) {
+    EXPECT_THROW(ACSRMatrix(4, 0), std::invalid_argument);
+    EXPECT_THROW(ACSRMatrix(3, 4, 0), std::invalid_argument);
+    EXPECT_THROW(ACSRMatrix(3, 4, 2, std::vector<ACSRTriplet>{{0, 0, {1.0}}}),
+                 std::invalid_argument);
+    EXPECT_THROW(ACSRMatrix(3, 4, 2, std::vector<ACSRTriplet>{{3, 0, {1.0, 2.0}}}),
+                 std::out_of_range);
+}
+
+TEST(ACSRMatrixGTest, testUpdateBidirectional) {
+    const std::vector<ACSRTriplet> triplets = {
+        {0, 1, {2.0, 3.0}}, {0, 2, {5.0, 7.0}}, {1, 2, {11.0, 13.0}}};
+    ACSRMatrix matrix(3, triplets, 2);
+    DenseMatrix other(3, 3,
+                      std::vector<double>{1.0, 10.0, 100.0, 20.0, 30.0, 200.0, 40.0, 50.0, 300.0});
+
+    matrix.updateBidirectional(other);
+
+    const DenseMatrix expected(
+        3, 3, std::vector<double>{8.0, 20.0, 100.0, 31.0, 43.0, 200.0, 40.0, 50.0, 300.0});
+    EXPECT_EQ(other, expected);
+
+    DenseMatrix next(3, 2, 0.0);
+    matrix.updateBidirectional(next);
+    const DenseMatrix nextExpected(3, 2, std::vector<double>{71.0, 93.0, 40.0, 50.0, 0.0, 0.0});
+    EXPECT_EQ(next, nextExpected);
+}
+
+TEST(DCSRMatrixGTest, testConstructorsAndMatrixVectorProduct) {
+    const Vector emptyVector;
+    const DCSRMatrix defaultMatrix;
+    EXPECT_EQ(defaultMatrix.numberOfRows(), 0);
+    EXPECT_EQ(defaultMatrix.numberOfColumns(), 0);
+    EXPECT_EQ((defaultMatrix * emptyVector).getDimension(), 0);
+
+    const DCSRMatrix emptySquare(4);
+    EXPECT_EQ(emptySquare * Vector(4, 2.0), Vector(4));
+
+    const DCSRMatrix emptyRectangle(3, 5, 0.0);
+    EXPECT_EQ(emptyRectangle * Vector(5, 2.0), Vector(3));
+
+    const std::vector<Triplet> triplets = {{4, 1, 2.0}, {0, 3, -1.0}, {4, 0, 3.0}, {2, 2, 4.0}};
+    const Vector vector({2.0, 5.0, 3.0, 7.0, 11.0, 13.0});
+    const Vector expected({-7.0, 0.0, 12.0, 0.0, 16.0});
+
+    const DCSRMatrix square(5, triplets);
+    EXPECT_EQ(square * Vector({2.0, 5.0, 3.0, 7.0, 11.0}), expected);
+
+    const DCSRMatrix rectangle(5, 6, triplets);
+    EXPECT_EQ(rectangle * vector, expected);
+    EXPECT_EQ(rectangle.nnz(), 4);
+    EXPECT_EQ(rectangle.nnzInRow(1), 0);
+    EXPECT_EQ(rectangle.nnzInRow(4), 2);
+
+    const std::vector<std::vector<index>> columns = {{3}, {}, {2}, {}, {1, 0}};
+    const std::vector<std::vector<double>> values = {{-1.0}, {}, {4.0}, {}, {2.0, 3.0}};
+    const DCSRMatrix fromRows(5, 6, columns, values);
+    EXPECT_EQ(fromRows * vector, expected);
+
+    const std::vector<index> rowIdx = {0, 1, 1, 2, 2, 4};
+    const std::vector<index> columnIdx = {3, 2, 1, 0};
+    const std::vector<double> nonZeros = {-1.0, 4.0, 2.0, 3.0};
+    const DCSRMatrix fromCsr(5, 6, rowIdx, columnIdx, nonZeros);
+    EXPECT_EQ(fromCsr * vector, expected);
+
+    DCSRMatrix copied(fromCsr);
+    DCSRMatrix moved(std::move(copied));
+    EXPECT_EQ(moved * vector, expected);
+
+    DCSRMatrix assigned;
+    assigned = fromCsr;
+    EXPECT_EQ(assigned * vector, expected);
+
+    DCSRMatrix moveAssigned;
+    moveAssigned = std::move(assigned);
+    EXPECT_EQ(moveAssigned * vector, expected);
+}
 
 template <class Type>
 class MatricesGTest : public testing::Test {
