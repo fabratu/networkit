@@ -1728,5 +1728,17 @@ TEST_F(CSRMatrixGTest, testCSRMatrixSort) {
     csr.sort();
 }
 
+TEST_F(CSRMatrixGTest, testMultiplyIntoReusesOutputVector) {
+    const CSRMatrix matrix(3, std::vector<Triplet>{{0, 0, 2.0}, {0, 2, 3.0}, {2, 1, -1.0}}, 0.0,
+                           false);
+    const Vector input({1.0, 2.0, 4.0});
+    Vector output(3, 17.0);
+
+    matrix.multiplyInto(input, output);
+
+    EXPECT_EQ(output, Vector({14.0, 0.0, -2.0}));
+    EXPECT_EQ(output, matrix * input);
+}
+
 } // namespace
 } // namespace NetworKit

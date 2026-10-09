@@ -81,11 +81,12 @@ private:
     const double rankTolerance;
 
     std::vector<const CSRMatrix *> levelMatrices;
-    std::vector<count> levelMaxDegrees;
     std::vector<double> levelAlphas;
+    std::vector<double> levelUpperFactors;
     std::vector<double> alphaByLevel;
     std::vector<Vector> currentPaths;
-    std::vector<Vector> lowerCorrection;
+    std::vector<Vector> nextPaths;
+    std::vector<double> alphaPowers;
     Vector msLowerBound;
     Vector msUpperBound;
     std::vector<edgeid> activeRanking;

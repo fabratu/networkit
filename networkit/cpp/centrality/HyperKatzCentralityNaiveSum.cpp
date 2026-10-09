@@ -1,7 +1,4 @@
 #include <algorithm>
-#include <cfloat>
-#include <chrono>
-#include <cmath>
 #include <stdexcept>
 
 #include <networkit/auxiliary/Log.hpp>
@@ -20,7 +17,7 @@ HyperKatzCentralityNaiveSum::HyperKatzCentralityNaiveSum(const Hypergraph &hGrap
     matrices.build(SMatrixType::Level);
 
     Vector ones(hGraph.upperEdgeIdBound(), 1.0);
-    alphaByLevel.resize(matrices.getMaxLevel(), 0.0);
+    alphaByLevel.resize(matrices.getMaxLevel() + 1, 0.0);
     matrices.forLevels([&](count s, const CSRMatrix &matrix) {
         const Vector degrees = matrix * ones;
         count maxDegree = 0;
@@ -29,8 +26,8 @@ HyperKatzCentralityNaiveSum::HyperKatzCentralityNaiveSum(const Hypergraph &hGrap
 
         const double alpha = 1.0 / (static_cast<double>(maxDegree) + 1.0);
         levelMatrices.push_back(&matrix);
-        levelMaxDegrees.push_back(maxDegree);
         levelAlphas.push_back(alpha);
+        levelUpperFactors.push_back(alpha * maxDegree / (1.0 - alpha * maxDegree));
         alphaByLevel[s] = alpha;
     });
 
@@ -44,12 +41,13 @@ void HyperKatzCentralityNaiveSum::run() {
 
     currentPaths.clear();
     currentPaths.reserve(levelMatrices.size());
-    // lowerCorrection.clear();
-    // lowerCorrection.reserve(levelMatrices.size());
+    nextPaths.clear();
+    nextPaths.reserve(levelMatrices.size());
     for (index i = 0; i < levelMatrices.size(); ++i) {
         currentPaths.emplace_back(dimension, 1.0);
-        // lowerCorrection.emplace_back(dimension);
+        nextPaths.emplace_back(dimension, 0.0);
     }
+    alphaPowers = levelAlphas;
 
     activeRanking.clear();
     activeRanking.reserve(hGraph.numberOfEdges());
@@ -123,24 +121,22 @@ bool HyperKatzCentralityNaiveSum::areSufficientlyRanked(edgeid high, edgeid low)
 // - maybe more efficient to update alpha also iterativly
 
 void HyperKatzCentralityNaiveSum::doIteration() {
-    const count r = iterationReached + 1;
-    const count dimension = hGraph.upperEdgeIdBound();
-    msUpperBound = Vector(dimension);
+    msUpperBound.parallelForElements(
+        [&](index element, double &value) { value = msLowerBound[element]; });
 
     for (index i = 0; i < levelMatrices.size(); ++i) {
-        currentPaths[i] = *levelMatrices[i] * currentPaths[i];
+        levelMatrices[i]->multiplyInto(currentPaths[i], nextPaths[i]);
+        std::swap(currentPaths[i], nextPaths[i]);
 
-        const double alpha = levelAlphas[i];
-        const count maxDegree = levelMaxDegrees[i];
-        const double alphaPower = std::pow(alpha, static_cast<double>(r));
-        const double nextAlphaPower = alpha * alphaPower;
-        const double boundFactor = maxDegree / (1.0 - alpha * maxDegree);
-
-        msLowerBound += alphaPower * currentPaths[i];
-        msUpperBound += nextAlphaPower * boundFactor * currentPaths[i];
+        const double lowerFactor = alphaPowers[i];
+        const double upperFactor = lowerFactor * levelUpperFactors[i];
+        currentPaths[i].parallelForElements([&](index element, double pathCount) {
+            const double lowerContribution = lowerFactor * pathCount;
+            msLowerBound[element] += lowerContribution;
+            msUpperBound[element] += lowerContribution + upperFactor * pathCount;
+        });
+        alphaPowers[i] *= levelAlphas[i];
     }
-
-    msUpperBound += msLowerBound;
     // INFO("LowerBound: ", msLowerBound);
     // INFO("UpperBound: ", msUpperBound);
 

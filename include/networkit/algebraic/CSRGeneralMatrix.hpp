@@ -16,6 +16,7 @@
 #include <omp.h>
 #include <ranges>
 #include <stdexcept>
+#include <utility>
 #include <vector>
 
 #include <networkit/Globals.hpp>
@@ -187,6 +188,19 @@ public:
                      ValueType zero = 0, bool isSorted = false)
         : rowIdx(rowIdx), columnIdx(columnIdx), nonZeros(nonZeros), nRows(nRows), nCols(nCols),
           isSorted(isSorted), zero(zero) {}
+
+    /**
+     * Constructs a matrix by taking ownership of existing CSR arrays.
+     */
+    CSRGeneralMatrix(count nRows, count nCols, std::vector<index> &&rowIdx,
+                     std::vector<index> &&columnIdx, std::vector<ValueType> &&nonZeros,
+                     ValueType zero = 0, bool isSorted = false)
+        : rowIdx(std::move(rowIdx)), columnIdx(std::move(columnIdx)), nonZeros(std::move(nonZeros)),
+          nRows(nRows), nCols(nCols), isSorted(isSorted), zero(zero) {
+        assert(this->rowIdx.size() == nRows + 1);
+        assert(this->columnIdx.size() == this->nonZeros.size());
+        assert(this->rowIdx.back() == this->nonZeros.size());
+    }
 
     /** Default copy constructor */
     CSRGeneralMatrix(const CSRGeneralMatrix &other) = default;
@@ -551,6 +565,20 @@ public:
         assert(nCols == vector.getDimension());
 
         Vector result(nRows, zero);
+        multiplyInto(vector, result);
+        return result;
+    }
+
+    /**
+     * Multiplies this matrix with @a vector and overwrites @a result with the product.
+     * The result vector must already have one entry per matrix row.
+     */
+    void multiplyInto(const Vector &vector, Vector &result) const {
+        assert(!vector.isTransposed());
+        assert(nCols == vector.getDimension());
+        assert(!result.isTransposed());
+        assert(nRows == result.getDimension());
+
 #pragma omp parallel for
         for (omp_index i = 0; i < static_cast<omp_index>(numberOfRows()); ++i) {
             double sum = zero;
@@ -559,8 +587,6 @@ public:
             }
             result[i] = sum;
         }
-
-        return result;
     }
 
     /**

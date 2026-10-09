@@ -29,28 +29,22 @@ void SMatrixContainer<Matrix>::build(SMatrixType matrixType, VSRMatrix *vsrMatri
         }
     });
 
-    // Delta entries are bucketed by their exact intersection level. Besides avoiding a complete
-    // scan of all intersections for every level, these directed entries also allow all maximum
-    // level degrees to be computed without constructing level matrices.
-    std::vector<std::vector<Triplet>> deltaEntries;
-    if (matrixType == SMatrixType::Delta || alphaVector != nullptr)
-        deltaEntries.resize(maximumIntersection + 2);
+    // Directed entries are bucketed by their exact intersection level. Delta matrices use the
+    // buckets directly; level matrices combine the relevant buckets without rescanning the hash
+    // maps or sorting a global triplet array for every level.
+    std::vector<std::vector<Triplet>> deltaEntries(maximumIntersection + 2);
 
     std::vector<count> maximumLevels;
     if (vsrMatrix != nullptr)
         maximumLevels.assign(dimension, 1);
 
-    if (!deltaEntries.empty() || !maximumLevels.empty()) {
-        for (edgeid eid1 = 0; eid1 < intersectionSizes.size(); ++eid1) {
-            for (const auto &[eid2, intersectionSize] : intersectionSizes[eid1]) {
-                if (!deltaEntries.empty()) {
-                    deltaEntries[intersectionSize].push_back({eid1, eid2, 1.0});
-                    deltaEntries[intersectionSize].push_back({eid2, eid1, 1.0});
-                }
-                if (!maximumLevels.empty()) {
-                    maximumLevels[eid1] = std::max(maximumLevels[eid1], intersectionSize);
-                    maximumLevels[eid2] = std::max(maximumLevels[eid2], intersectionSize);
-                }
+    for (edgeid eid1 = 0; eid1 < intersectionSizes.size(); ++eid1) {
+        for (const auto &[eid2, intersectionSize] : intersectionSizes[eid1]) {
+            deltaEntries[intersectionSize].push_back({eid1, eid2, 1.0});
+            deltaEntries[intersectionSize].push_back({eid2, eid1, 1.0});
+            if (!maximumLevels.empty()) {
+                maximumLevels[eid1] = std::max(maximumLevels[eid1], intersectionSize);
+                maximumLevels[eid2] = std::max(maximumLevels[eid2], intersectionSize);
             }
         }
     }
@@ -71,37 +65,52 @@ void SMatrixContainer<Matrix>::build(SMatrixType matrixType, VSRMatrix *vsrMatri
         if constexpr (std::is_same_v<Matrix, ACSRMatrix>) {
             throw std::invalid_argument("ACSRMatrix storage is only supported for delta matrices");
         } else {
-            // A level matrix changes from s - 1 to s exactly when a pair has intersection size
-            // s - 1.
-            std::vector<bool> changesAtLevel(maximumIntersection + 2, false);
-            changesAtLevel[1] = true;
-            changesAtLevel[maximumIntersection + 1] = true;
-            for (const auto &row : intersectionSizes) {
-                for (const auto &entry : row)
-                    changesAtLevel[entry.second + 1] = true;
-            }
+            intersectionSizes.clear();
+            intersectionSizes.shrink_to_fit();
 
-            for (count s = 1; s <= maximumIntersection + 1; ++s) {
-                if (changesAtLevel[s]) {
-                    std::vector<Triplet> triplets;
-                    for (edgeid eid1 = 0; eid1 < intersectionSizes.size(); ++eid1) {
-                        for (const auto &[eid2, intersectionSize] : intersectionSizes[eid1]) {
-                            if (intersectionSize >= s) {
-                                triplets.push_back({eid1, eid2, 1.0});
-                                triplets.push_back({eid2, eid1, 1.0});
-                            }
-                        }
-                    }
+            matrices.reserve(maximumIntersection + 1);
+            levelToMatrix.resize(maximumIntersection + 1);
 
-                    std::sort(triplets.begin(), triplets.end(),
-                              [](const Triplet &lhs, const Triplet &rhs) {
-                                  return lhs.row < rhs.row
-                                         || (lhs.row == rhs.row && lhs.column < rhs.column);
-                              });
-                    matrices.emplace_back(dimension, triplets, 0.0, true);
+            // The level beyond the maximum intersection is always empty. Descending from there,
+            // add one exact-level bucket at a time. Empty buckets reuse the matrix for the next
+            // higher level.
+            matrices.emplace_back(dimension);
+            index currentMatrix = 0;
+            levelToMatrix[maximumIntersection] = currentMatrix;
+
+            std::vector<count> rowCounts(dimension, 0);
+            count numberOfEntries = 0;
+            for (count s = maximumIntersection; s > 0; --s) {
+                if (deltaEntries[s].empty()) {
+                    levelToMatrix[s - 1] = currentMatrix;
+                    continue;
                 }
 
-                levelToMatrix.push_back(matrices.size() - 1);
+                for (const auto &entry : deltaEntries[s])
+                    ++rowCounts[entry.row];
+                numberOfEntries += deltaEntries[s].size();
+
+                std::vector<index> rowOffsets(dimension + 1, 0);
+                for (index row = 0; row < dimension; ++row)
+                    rowOffsets[row + 1] = rowOffsets[row] + rowCounts[row];
+
+                std::vector<index> columnIndices(numberOfEntries);
+                std::vector<double> values(numberOfEntries, 1.0);
+                auto positions = rowOffsets;
+                for (count level = s; level <= maximumIntersection; ++level) {
+                    for (const auto &entry : deltaEntries[level])
+                        columnIndices[positions[entry.row]++] = entry.column;
+                }
+
+                if constexpr (std::is_same_v<Matrix, CSRMatrix>) {
+                    matrices.emplace_back(dimension, dimension, std::move(rowOffsets),
+                                          std::move(columnIndices), std::move(values), 0.0, false);
+                } else {
+                    matrices.emplace_back(dimension, dimension, rowOffsets, columnIndices, values,
+                                          0.0, false);
+                }
+                currentMatrix = matrices.size() - 1;
+                levelToMatrix[s - 1] = currentMatrix;
             }
         }
     } else {
