@@ -198,6 +198,23 @@ TEST(SMatrixContainerGTest, testACSRDeltaStorage) {
     EXPECT_EQ(visitedLevels, container.getMaxLevel());
 }
 
+TEST(SMatrixContainerGTest, testComputesLevelAlphasDuringDeltaBuild) {
+    Hypergraph hGraph(6);
+    hGraph.addEdge({0, 1, 2});
+    hGraph.addEdge({0, 1, 3});
+    hGraph.addEdge({0, 4});
+    hGraph.addEdge({5});
+
+    std::vector<double> alphas;
+    SMatrixContainer<ACSRMatrix> container(hGraph);
+    container.build(SMatrixType::Delta, nullptr, &alphas);
+
+    ASSERT_EQ(alphas.size(), container.getMaxLevel());
+    EXPECT_DOUBLE_EQ(alphas[0], 1.0 / 3.0);
+    EXPECT_DOUBLE_EQ(alphas[1], 0.5);
+    EXPECT_DOUBLE_EQ(alphas[2], 1.0);
+}
+
 TEST(SMatrixContainerGTest, testBuildSetsVSRMatrixWithOneRowPerEdge) {
     Hypergraph hGraph(6);
     hGraph.addEdge({0, 1, 2});

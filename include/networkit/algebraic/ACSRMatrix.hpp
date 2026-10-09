@@ -6,10 +6,12 @@
 #include <vector>
 
 #include <networkit/Globals.hpp>
+#include <networkit/algebraic/AlgebraicGlobals.hpp>
 
 namespace NetworKit {
 
 class DenseMatrix;
+class VSRMatrix;
 
 /** Represents an augmented matrix entry with @a values.size() values. */
 struct ACSRTriplet {
@@ -103,6 +105,32 @@ public:
     ACSRMatrix(count nRows, count nCols, const std::vector<ACSRTriplet> &triplets, count k,
                bool isSorted = false)
         : ACSRMatrix(nRows, nCols, k, triplets, isSorted) {}
+
+    /**
+     * Constructs a rectangular matrix from a sparsity pattern and initializes every stored value
+     * to @a initialValue. This avoids allocating one value vector per entry when all augmented
+     * values are equal.
+     */
+    ACSRMatrix(count nRows, count nCols, count k, const std::vector<Triplet> &pattern,
+               double initialValue, bool isSorted = false)
+        : rowIdx(nRows + 1, 0), columnIdx(pattern.size()),
+          nonZeros(pattern.size() * k, initialValue), nRows(nRows), nCols(nCols), k(k),
+          isSorted(isSorted) {
+        validateK(k);
+
+        for (const auto &entry : pattern) {
+            if (entry.row >= nRows || entry.column >= nCols)
+                throw std::out_of_range("ACSRMatrix pattern index out of range");
+            ++rowIdx[entry.row + 1];
+        }
+
+        for (index i = 0; i < nRows; ++i)
+            rowIdx[i + 1] += rowIdx[i];
+
+        auto positions = rowIdx;
+        for (const auto &entry : pattern)
+            columnIdx[positions[entry.row]++] = entry.column;
+    }
 
     /** Constructs a matrix from columns and augmented values grouped by row. */
     ACSRMatrix(count nRows, count nCols, count k, const std::vector<std::vector<index>> &columnIdx,
@@ -206,9 +234,22 @@ public:
      */
     void updateOther(DenseMatrix &other) const;
 
+    void updateOther(VSRMatrix &other) const;
+
+    /**
+     * Applies this matrix's sparsity pattern directly to @a input and accumulates the result into
+     * @a output. For every stored entry (i,j), the first @a k values of input row j are added to
+     * output row i.
+     */
+    void multiplyInto(const VSRMatrix &input, VSRMatrix &output) const;
+
     void assign(const DenseMatrix &other);
 
+    void assign(const VSRMatrix &other);
+
     void resetOther(DenseMatrix &other) const;
+
+    void resetOther(VSRMatrix &other) const;
 
     ACSRMatrix &operator=(const ACSRMatrix &other) = default;
     ACSRMatrix &operator=(ACSRMatrix &&other) noexcept = default;

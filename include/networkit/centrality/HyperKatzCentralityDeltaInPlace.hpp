@@ -6,6 +6,7 @@
 
 #include <networkit/Globals.hpp>
 #include <networkit/algebraic/DenseMatrix.hpp>
+#include <networkit/algebraic/VSRMatrix.hpp>
 #include <networkit/algebraic/Vector.hpp>
 #include <networkit/base/Algorithm.hpp>
 #include <networkit/graph/Hypergraph.hpp>
@@ -73,11 +74,9 @@ private:
     const bool groupOnly;
     const double rankTolerance;
 
-    std::vector<count> levelMaxDegrees;
-    std::vector<double> levelAlphas;
-    std::vector<double> levelTolerances;
-    // std::vector<Vector> currentPaths;
-    DenseMatrix currentPaths;
+    Vector alphas;
+    VSRMatrix currentPaths;
+    VSRMatrix nextPaths;
     Vector msLowerBound;
     Vector msUpperBound;
     Vector lowerCorrection;

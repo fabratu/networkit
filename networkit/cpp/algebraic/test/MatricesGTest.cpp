@@ -41,6 +41,83 @@ TEST(VSRMatrixGTest, testConstructionAndSpMV) {
     EXPECT_EQ(inferredK * vector, Vector(3, 0.0));
 }
 
+TEST(VSRMatrixGTest, testElementAccess) {
+    VSRMatrix matrix(3, 5, 3, std::vector<count>{1, 3, 2});
+    matrix(0, 0) = 2.0;
+    matrix(1, 0) = 3.0;
+    matrix(1, 1) = 4.0;
+    matrix(1, 2) = 5.0;
+    matrix(2, 1) = 6.0;
+
+    const VSRMatrix &constMatrix = matrix;
+    EXPECT_DOUBLE_EQ(constMatrix(1, 2), 5.0);
+    EXPECT_DOUBLE_EQ(constMatrix(0, 1), 0.0);
+    EXPECT_EQ(matrix * Vector({1.0, 2.0, 3.0, 4.0, 5.0}), Vector({2.0, 26.0, 12.0}));
+
+    EXPECT_THROW(matrix(0, 1), std::out_of_range);
+    EXPECT_THROW(matrix(3, 0), std::out_of_range);
+    EXPECT_THROW(constMatrix(0, 5), std::out_of_range);
+}
+
+TEST(VSRMatrixGTest, testACSRUpdateOther) {
+    const ACSRMatrix matrix(
+        2, 2, 2,
+        std::vector<ACSRTriplet>{{0, 0, {1.0, 2.0}}, {0, 1, {3.0, 4.0}}, {1, 0, {5.0, 6.0}}});
+    VSRMatrix other(2, 3, 2, std::vector<count>{2, 2});
+
+    matrix.updateOther(other);
+
+    const VSRMatrix &constOther = other;
+    EXPECT_DOUBLE_EQ(constOther(0, 0), 4.0);
+    EXPECT_DOUBLE_EQ(constOther(0, 1), 6.0);
+    EXPECT_DOUBLE_EQ(constOther(1, 0), 5.0);
+    EXPECT_DOUBLE_EQ(constOther(1, 1), 6.0);
+}
+
+TEST(VSRMatrixGTest, testACSRAssign) {
+    ACSRMatrix matrix(2, 2, 2, std::vector<ACSRTriplet>{{0, 1, {0.0, 0.0}}, {1, 0, {0.0, 0.0}}});
+    VSRMatrix source(2, 3, 2, std::vector<count>{2, 2});
+    source(0, 0) = 1.0;
+    source(0, 1) = 2.0;
+    source(1, 0) = 3.0;
+    source(1, 1) = 4.0;
+
+    matrix.assign(source);
+
+    VSRMatrix result(2, 3, 2, std::vector<count>{2, 2});
+    matrix.updateOther(result);
+    const VSRMatrix &constResult = result;
+    EXPECT_DOUBLE_EQ(constResult(0, 0), 3.0);
+    EXPECT_DOUBLE_EQ(constResult(0, 1), 4.0);
+    EXPECT_DOUBLE_EQ(constResult(1, 0), 1.0);
+    EXPECT_DOUBLE_EQ(constResult(1, 1), 2.0);
+}
+
+TEST(VSRMatrixGTest, testACSRMultiplyInto) {
+    const ACSRMatrix matrix(
+        3, 3, 2,
+        std::vector<ACSRTriplet>{{0, 1, {0.0, 0.0}}, {0, 2, {0.0, 0.0}}, {1, 0, {0.0, 0.0}}});
+    VSRMatrix input(3, 3, 2, std::vector<count>{2, 2, 2});
+    input(0, 0) = 1.0;
+    input(0, 1) = 2.0;
+    input(1, 0) = 3.0;
+    input(1, 1) = 4.0;
+    input(2, 0) = 5.0;
+    input(2, 1) = 6.0;
+    VSRMatrix output(3, 3, 2, std::vector<count>{2, 2, 2});
+    output.reset();
+
+    matrix.multiplyInto(input, output);
+
+    const VSRMatrix &constOutput = output;
+    EXPECT_DOUBLE_EQ(constOutput(0, 0), 8.0);
+    EXPECT_DOUBLE_EQ(constOutput(0, 1), 10.0);
+    EXPECT_DOUBLE_EQ(constOutput(1, 0), 1.0);
+    EXPECT_DOUBLE_EQ(constOutput(1, 1), 2.0);
+    EXPECT_DOUBLE_EQ(constOutput(2, 0), 0.0);
+    EXPECT_DOUBLE_EQ(constOutput(2, 1), 0.0);
+}
+
 TEST(VSRMatrixGTest, testConstructorValidation) {
     EXPECT_THROW(VSRMatrix(3, 5, 0, std::vector<count>{1, 2, 3}), std::invalid_argument);
     EXPECT_THROW(VSRMatrix(3, 5, 5, std::vector<count>{1, 2, 3}), std::invalid_argument);
@@ -60,6 +137,9 @@ TEST(ACSRMatrixGTest, testConstructors) {
     EXPECT_NO_THROW(ACSRMatrix(3, 4, 2, triplets));
     EXPECT_NO_THROW(ACSRMatrix(4, triplets, 2));
     EXPECT_NO_THROW(ACSRMatrix(3, 4, triplets, 2));
+
+    const std::vector<Triplet> pattern = {{2, 1, 0.0}, {0, 3, 0.0}};
+    EXPECT_NO_THROW(ACSRMatrix(3, 4, 2, pattern, 1.0));
 
     const std::vector<std::vector<index>> columns = {{3}, {}, {1}};
     const std::vector<std::vector<std::vector<double>>> values = {{{1.0, 2.0}}, {}, {{3.0, 4.0}}};

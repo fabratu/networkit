@@ -27,8 +27,8 @@ namespace NetworKit {
 namespace {
 
 // constexpr auto inputPath = "input/abcdh-n10000-d2.5-5-50-c1.5-x0.5-q-2.0-2-20-wstrict.hmetis";
-// constexpr auto inputPath = "input/edge-walmart-edge-label.hmetis";
-constexpr auto inputPath = "input/gene-disease.hmetis";
+constexpr auto inputPath = "input/edge-walmart-edge-label.hmetis";
+// constexpr auto inputPath = "input/gene-disease.hmetis";
 constexpr count topK = 100;
 
 uint64_t residentSetBytes() noexcept {

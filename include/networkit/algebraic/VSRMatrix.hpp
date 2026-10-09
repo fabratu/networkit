@@ -41,6 +41,15 @@ public:
     VSRMatrix(count nRows, count nCols, const std::vector<count> &kValues)
         : VSRMatrix(nRows, nCols, inferK(kValues), kValues) {}
 
+    /** Returns the value at position (@a i, @a j), or zero outside the stored row prefix. */
+    const double &operator()(index i, index j) const;
+
+    /** Returns a mutable reference to a value in the stored prefix of row @a i. */
+    double &operator()(index i, index j);
+
+    /** Resets all entries to zero */
+    void reset();
+
     /** Multiplies this matrix with a column vector. */
     Vector operator*(const Vector &vector) const;
 

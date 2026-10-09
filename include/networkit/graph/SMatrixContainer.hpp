@@ -47,8 +47,11 @@ public:
      *
      * @param type Whether to build s-level or s-delta matrices.
      * @param vsrMatrix Optional output for the per-edge variable sparse row matrix.
+     * @param alphaVector Optional output for one damping factor per level. Each factor is
+     *                    <code>1 / (maximumLevelDegree + 1)</code>.
      */
-    void build(SMatrixType type = SMatrixType::Level, VSRMatrix *vsrMatrix = nullptr);
+    void build(SMatrixType type = SMatrixType::Level, VSRMatrix *vsrMatrix = nullptr,
+               std::vector<double> *alphaVector = nullptr);
 
     /** Removes all matrices and level mappings from the container. */
     void reset() noexcept;
@@ -106,6 +109,17 @@ public:
             Matrix &matrix = matrices[levelToMatrix[s - 1]];
             // if (matrix.nnz() != 0)
             handle(s, matrix);
+        }
+    }
+
+    template <typename L>
+    void forLevelsMutableInParrallel(L handle) {
+#pragma omp parallel for schedule(guided)
+        for (omp_index i = 0; i < static_cast<omp_index>(getMaxLevel()); ++i) {
+            // for (count s = 1; s <= getMaxLevel(); ++s) {
+            Matrix &matrix = matrices[levelToMatrix[i]];
+            // if (matrix.nnz() != 0)
+            handle(i, matrix);
         }
     }
 

@@ -25,7 +25,25 @@ VSRMatrix::VSRMatrix(count nRows, count nCols, count k, const std::vector<count>
         rowIdx[i + 1] = rowIdx[i] + kValues[i];
     }
 
-    values.resize(rowIdx.back(), 0.0);
+    values.resize(rowIdx.back(), 1.0);
+}
+
+const double &VSRMatrix::operator()(index i, index j) const {
+    if (i >= nRows || j >= nCols)
+        throw std::out_of_range("VSRMatrix index out of range");
+
+    static const double zero = 0.0;
+    const index rowLength = rowIdx[i + 1] - rowIdx[i];
+    return j < rowLength ? values[rowIdx[i] + j] : zero;
+}
+
+double &VSRMatrix::operator()(index i, index j) {
+    if (i >= nRows || j >= nCols)
+        throw std::out_of_range("VSRMatrix index out of range");
+    if (j >= rowIdx[i + 1] - rowIdx[i])
+        throw std::out_of_range("VSRMatrix index is outside the stored row prefix");
+
+    return values[rowIdx[i] + j];
 }
 
 Vector VSRMatrix::operator*(const Vector &vector) const {
@@ -33,7 +51,7 @@ Vector VSRMatrix::operator*(const Vector &vector) const {
     assert(vector.getDimension() == nCols);
 
     Vector result(nRows, 0.0);
-#pragma omp parallel for
+#pragma omp parallel for schedule(guided)
     for (omp_index i = 0; i < static_cast<omp_index>(nRows); ++i) {
         double sum = 0.0;
         const index rowBegin = rowIdx[i];
@@ -47,7 +65,7 @@ Vector VSRMatrix::operator*(const Vector &vector) const {
 }
 
 void VSRMatrix::muVInPlace(const Vector &vector, Vector &other) const {
-#pragma omp parallel for
+#pragma omp parallel for schedule(guided)
     for (omp_index i = 0; i < static_cast<omp_index>(nRows); ++i) {
         double sum = 0.0;
         const index rowBegin = rowIdx[i];
@@ -56,6 +74,10 @@ void VSRMatrix::muVInPlace(const Vector &vector, Vector &other) const {
             sum += values[entry] * vector[entry - rowBegin];
         other[i] = sum;
     }
+}
+
+void VSRMatrix::reset() {
+    std::fill(values.begin(), values.end(), 0.0);
 }
 
 } // namespace NetworKit

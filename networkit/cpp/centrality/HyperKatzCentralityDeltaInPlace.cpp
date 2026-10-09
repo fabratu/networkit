@@ -17,30 +17,18 @@ HyperKatzCentralityDeltaInPlace::HyperKatzCentralityDeltaInPlace(const Hypergrap
     if (tolerance < 0)
         throw std::invalid_argument("The ranking tolerance must be non-negative");
 
-    matrices.build(SMatrixType::Delta);
+    std::vector<double> levelAlphas;
+    matrices.build(SMatrixType::Delta, &currentPaths, &levelAlphas);
+    nextPaths = currentPaths;
+    nextPaths.reset();
 
-    count maxDegree = 0.0;
-
-    SMatrixContainer<DCSRMatrix> maxDegBuilder(hGraph);
-    maxDegBuilder.build(SMatrixType::Level);
-    Vector ones(hGraph.upperEdgeIdBound(), 1.0);
-
-    // This actually overestimates the maxDegree. For correct result, we need the level matrices (or
-    // store the correct value in SMatrixContainer when building delta matrices)
-    matrices.forLevels([&](count s, const ACSRMatrix &matrix) {
-        const NetworKit::DCSRMatrix &levelRef = maxDegBuilder.getMatrix(s);
-        const Vector degrees = levelRef * ones;
-        maxDegree = degrees.max();
-
-        // deltaMatrices.push_back(&matrix);
-        levelMaxDegrees.push_back(maxDegree);
-        const double alpha = 1.0 / (static_cast<double>(maxDegree) + 1.0);
-        levelAlphas.push_back(alpha);
-        // Add degree of delta matrix to all lower levels
-        // for (int i = 0; i < levelMaxDegrees.size() - 1; i++) {
-        //     levelMaxDegrees[i] += maxDegree;
-        // }
-    });
+    alphas = Vector(levelAlphas);
+    upperCorrection = Vector(levelAlphas.size(), 0.0);
+    for (index i = 0; i < levelAlphas.size(); ++i) {
+        const double alpha = levelAlphas[i];
+        const double maxDegree = std::round(1.0 / alpha - 1.0);
+        upperCorrection[i] = alpha * maxDegree / (1.0 - alpha * maxDegree);
+    }
 
     if (matrices.numberOfMatrices() == 0)
         throw std::runtime_error(
@@ -51,26 +39,16 @@ void HyperKatzCentralityDeltaInPlace::run() {
     std::chrono::steady_clock::time_point begin = std::chrono::steady_clock::now();
     const count dimension = hGraph.upperEdgeIdBound();
 
-    currentPaths = DenseMatrix(dimension, matrices.getMaxLevel(), 0.0);
+    // currentPaths.reset();
 
     activeRanking.clear();
     activeRanking.reserve(hGraph.numberOfEdges());
     hGraph.forEdges([&](edgeid eid) { activeRanking.push_back(eid); });
 
     msLowerBound = Vector(dimension, 0.0);
-    // msUpperBound = Vector(dimension, 0.0);
+    // TODO: reset msUpperCorrection
 
-    lowerCorrection = Vector(matrices.getMaxLevel(), 0.0);
-    upperCorrection = Vector(matrices.getMaxLevel(), 0.0);
-    auto lowerSetter = [&](int i, double &element) { element = levelAlphas[i]; };
-    auto upperSetter = [&](int i, double &element) {
-        double alpha = levelAlphas[i];
-        double deg = levelMaxDegrees[i];
-        element = std::pow(alpha, 2.0) * deg / (1.0 - alpha * deg);
-    };
-
-    lowerCorrection.parallelForElements(lowerSetter);
-    upperCorrection.parallelForElements(upperSetter);
+    lowerCorrection = Vector(matrices.getMaxLevel(), 1.0);
 
     iterationReached = 0;
 
@@ -124,12 +102,29 @@ bool HyperKatzCentralityDeltaInPlace::areSufficientlyRanked(edgeid high, edgeid 
 }
 
 void HyperKatzCentralityDeltaInPlace::doIteration() {
-    const count r = iterationReached + 1;
-    const count dimension = hGraph.upperEdgeIdBound();
-    matrices.getMatrix(matrices.getMaxLevel()).resetOther(currentPaths);
+    nextPaths.reset();
 
-    matrices.forLevelsMutable(
-        [&](count s, ACSRMatrix &matrix) { matrix.updateOther(currentPaths); });
+    matrices.forLevels([&](count s, const ACSRMatrix &matrix) {
+        matrix.multiplyInto(currentPaths, nextPaths);
+        lowerCorrection[s - 1] *= alphas[s - 1];
+        upperCorrection[s - 1] *= alphas[s - 1];
+    });
+
+    std::swap(currentPaths, nextPaths);
+
+    // alphas.parallelForElements([&](const int &i, double &element) {
+    //     lowerCorrection[i] *= element;
+    //     upperCorrection[i] *= element;
+    // });
+
+    // double alpha = levelAlphas[s - 1];
+    // double alphaPower = std::pow(alpha, static_cast<double>(r));
+    // auto deg = levelMaxDegrees[s - 1];
+    // TODO: can we do this better with double saving alpha + alphaPower and do vectorized
+    // *= and = seperatly?
+    //     lowerCorrection[s - 1] *= alpha;
+    //     upperCorrection[s - 1] = alphaPower * alpha * deg / (1.0 - alpha * deg);
+    // });
 
     msLowerBound += currentPaths * lowerCorrection;
     msUpperBound = currentPaths * upperCorrection;
@@ -143,18 +138,13 @@ void HyperKatzCentralityDeltaInPlace::doIteration() {
     // INFO("Current paths first edge: ", currentPaths.row(0));
     // INFO("Current paths last edge: ", currentPaths.row(currentPaths.numberOfRows() - 1));
 
-    auto lowerSetter = [&](int i, double &element) { element *= levelAlphas[i]; };
-    auto upperSetter = [&](int i, double &element) {
-        double alpha = levelAlphas[i];
-        double alphaPower = std::pow(alpha, static_cast<double>(r + 1));
-        double deg = levelMaxDegrees[i];
-        element = alphaPower * alpha * deg / (1.0 - alpha * deg);
-    };
+    // auto lowerSetter = [&](int i, double &element) { element *= levelAlphas[i]; };
+    // auto upperSetter = [&](int i, double &element) {
 
-    lowerCorrection.parallelForElements(lowerSetter);
-    upperCorrection.parallelForElements(upperSetter);
+    // };
 
-    matrices.forLevelsMutable([&](count s, ACSRMatrix &matrix) { matrix.assign(currentPaths); });
+    // lowerCorrection.forElements(lowerSetter);
+    // upperCorrection.parallelForElements(upperSetter);
 
     ++iterationReached;
 }
