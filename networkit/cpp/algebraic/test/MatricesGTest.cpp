@@ -189,6 +189,30 @@ TEST(ACSRMatrixGTest, testUpdateBidirectional) {
     EXPECT_EQ(next, nextExpected);
 }
 
+TEST(ACSRMatrixGTest, testPatternOnlyMultiply) {
+    std::vector<index> rowOffsets{0, 2, 3, 3};
+    std::vector<index> columnIndices{1, 2, 0};
+    const ACSRMatrix matrix(3, 3, 2, std::move(rowOffsets), std::move(columnIndices), false);
+
+    VSRMatrix input(3, 3, 2, std::vector<count>{2, 2, 2});
+    input(0, 0) = 1.0;
+    input(0, 1) = 2.0;
+    input(1, 0) = 3.0;
+    input(1, 1) = 4.0;
+    input(2, 0) = 5.0;
+    input(2, 1) = 6.0;
+    VSRMatrix output(3, 3, 2, std::vector<count>{2, 2, 2});
+    output.reset();
+
+    matrix.multiplyInto(input, output);
+
+    EXPECT_DOUBLE_EQ(output(0, 0), 8.0);
+    EXPECT_DOUBLE_EQ(output(0, 1), 10.0);
+    EXPECT_DOUBLE_EQ(output(1, 0), 1.0);
+    EXPECT_DOUBLE_EQ(output(1, 1), 2.0);
+    EXPECT_THROW(matrix.updateOther(output), std::logic_error);
+}
+
 TEST(DCSRMatrixGTest, testConstructorsAndMatrixVectorProduct) {
     const Vector emptyVector;
     const DCSRMatrix defaultMatrix;

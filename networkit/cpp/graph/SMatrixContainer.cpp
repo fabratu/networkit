@@ -1,52 +1,136 @@
 #include <algorithm>
+#include <cstdint>
+#include <functional>
+#include <limits>
+#include <numeric>
 #include <stdexcept>
 #include <type_traits>
-#include <unordered_map>
+#include <utility>
 
+#include <tlx/sort/parallel_mergesort.hpp>
+
+#include <networkit/auxiliary/Parallelism.hpp>
 #include <networkit/graph/SMatrixContainer.hpp>
 
 namespace NetworKit {
 
+namespace {
+
+struct EdgePair {
+    edgeid first;
+    edgeid second;
+
+    bool operator==(const EdgePair &) const = default;
+};
+
+struct SparseEntry {
+    edgeid row;
+    edgeid column;
+};
+
+} // namespace
+
 template <typename Matrix>
 void SMatrixContainer<Matrix>::build(SMatrixType matrixType, VSRMatrix *vsrMatrix,
-                                     std::vector<double> *alphaVector) {
+                                     std::vector<double> *alphaVector, bool patternOnly) {
     reset();
 
+    if (patternOnly) {
+        if constexpr (!std::is_same_v<Matrix, ACSRMatrix>)
+            throw std::invalid_argument("Pattern-only storage is supported only for ACSRMatrix");
+        if (matrixType != SMatrixType::Delta)
+            throw std::invalid_argument("Pattern-only ACSRMatrix storage requires delta matrices");
+    }
+
     const count dimension = hGraph.upperEdgeIdBound();
-    std::vector<std::unordered_map<edgeid, count>> intersectionSizes(dimension);
+    const count nodeBound = hGraph.upperNodeIdBound();
+    std::vector<index> pairOffsets(nodeBound + 1, 0);
+    for (node u = 0; u < nodeBound; ++u) {
+        if (!hGraph.hasNode(u))
+            continue;
+        const count degree = hGraph.edgesOf(u).size();
+        pairOffsets[u + 1] = degree > 1 ? degree * (degree - 1) / 2 : 0;
+    }
+    std::partial_sum(pairOffsets.begin(), pairOffsets.end(), pairOffsets.begin());
+
     count maximumIntersection = 0;
-
-    // Count every hyperedge intersection in one pass over the node incidences. Pairs are stored
-    // only for the smaller edge id, so each common node contributes exactly once.
-    hGraph.forNodes([&](node u) {
-        const auto &incidentEdges = hGraph.edgesOf(u);
-        for (auto first = incidentEdges.begin(); first != incidentEdges.end(); ++first) {
-            for (auto second = std::next(first); second != incidentEdges.end(); ++second) {
-                const auto [eid1, eid2] = std::minmax(*first, *second);
-                auto &intersectionSize = intersectionSizes[eid1][eid2];
-                maximumIntersection = std::max(maximumIntersection, ++intersectionSize);
-            }
-        }
-    });
-
-    // Directed entries are bucketed by their exact intersection level. Delta matrices use the
-    // buckets directly; level matrices combine the relevant buckets without rescanning the hash
-    // maps or sorting a global triplet array for every level.
-    std::vector<std::vector<Triplet>> deltaEntries(maximumIntersection + 2);
-
+    std::vector<std::vector<SparseEntry>> deltaEntries;
     std::vector<count> maximumLevels;
     if (vsrMatrix != nullptr)
         maximumLevels.assign(dimension, 1);
 
-    for (edgeid eid1 = 0; eid1 < intersectionSizes.size(); ++eid1) {
-        for (const auto &[eid2, intersectionSize] : intersectionSizes[eid1]) {
-            deltaEntries[intersectionSize].push_back({eid1, eid2, 1.0});
-            deltaEntries[intersectionSize].push_back({eid2, eid1, 1.0});
+    const auto createBuckets = [&](const auto &pairs, auto firstOf, auto secondOf) {
+        for (index begin = 0; begin < pairs.size();) {
+            index end = begin + 1;
+            while (end < pairs.size() && pairs[end] == pairs[begin])
+                ++end;
+            maximumIntersection = std::max(maximumIntersection, end - begin);
+            begin = end;
+        }
+
+        deltaEntries.resize(maximumIntersection + 2);
+        for (index begin = 0; begin < pairs.size();) {
+            index end = begin + 1;
+            while (end < pairs.size() && pairs[end] == pairs[begin])
+                ++end;
+
+            const count intersectionSize = end - begin;
+            const edgeid eid1 = firstOf(pairs[begin]);
+            const edgeid eid2 = secondOf(pairs[begin]);
+            deltaEntries[intersectionSize].push_back({eid1, eid2});
+            deltaEntries[intersectionSize].push_back({eid2, eid1});
             if (!maximumLevels.empty()) {
                 maximumLevels[eid1] = std::max(maximumLevels[eid1], intersectionSize);
                 maximumLevels[eid2] = std::max(maximumLevels[eid2], intersectionSize);
             }
+            begin = end;
         }
+    };
+
+    if (dimension <= std::numeric_limits<std::uint32_t>::max()) {
+        std::vector<std::uint64_t> pairs(pairOffsets.back());
+        hGraph.parallelForNodes([&](node u) {
+            index position = pairOffsets[u];
+            const auto &incidentEdges = hGraph.edgesOf(u);
+            for (auto first = incidentEdges.begin(); first != incidentEdges.end(); ++first) {
+                for (auto second = std::next(first); second != incidentEdges.end(); ++second) {
+                    const auto [eid1, eid2] = std::minmax(*first, *second);
+                    pairs[position++] =
+                        (static_cast<std::uint64_t>(eid1) << 32) | static_cast<std::uint32_t>(eid2);
+                }
+            }
+        });
+        if (pairs.size() > 1) {
+            tlx::parallel_mergesort(pairs.begin(), pairs.end(), std::less<std::uint64_t>{},
+                                    std::min<count>(pairs.size(), Aux::getMaxNumberOfThreads()));
+        }
+        createBuckets(
+            pairs, [](std::uint64_t pair) { return static_cast<edgeid>(pair >> 32); },
+            [](std::uint64_t pair) {
+                return static_cast<edgeid>(static_cast<std::uint32_t>(pair));
+            });
+    } else {
+        std::vector<EdgePair> pairs(pairOffsets.back());
+        hGraph.parallelForNodes([&](node u) {
+            index position = pairOffsets[u];
+            const auto &incidentEdges = hGraph.edgesOf(u);
+            for (auto first = incidentEdges.begin(); first != incidentEdges.end(); ++first) {
+                for (auto second = std::next(first); second != incidentEdges.end(); ++second) {
+                    const auto [eid1, eid2] = std::minmax(*first, *second);
+                    pairs[position++] = {eid1, eid2};
+                }
+            }
+        });
+        const auto less = [](const EdgePair &lhs, const EdgePair &rhs) {
+            return lhs.first < rhs.first || (lhs.first == rhs.first && lhs.second < rhs.second);
+        };
+        if (pairs.size() > 1) {
+            tlx::parallel_mergesort(pairs.begin(), pairs.end(), less,
+                                    std::min<count>(pairs.size(), Aux::getMaxNumberOfThreads()));
+        }
+        createBuckets(
+            pairs, [](const EdgePair &pair) { return pair.first; },
+            [](const EdgePair &pair) { return pair.second; });
     }
 
     if (alphaVector != nullptr) {
@@ -60,14 +144,24 @@ void SMatrixContainer<Matrix>::build(SMatrixType matrixType, VSRMatrix *vsrMatri
         }
     }
 
+    const auto makeCsrPattern = [&](const std::vector<SparseEntry> &entries) {
+        std::vector<index> rowOffsets(dimension + 1, 0);
+        for (const auto &entry : entries)
+            ++rowOffsets[entry.row + 1];
+        std::partial_sum(rowOffsets.begin(), rowOffsets.end(), rowOffsets.begin());
+
+        std::vector<index> columnIndices(entries.size());
+        auto positions = rowOffsets;
+        for (const auto &entry : entries)
+            columnIndices[positions[entry.row]++] = entry.column;
+        return std::make_pair(std::move(rowOffsets), std::move(columnIndices));
+    };
+
     levelToMatrix.reserve(maximumIntersection + 1);
     if (matrixType == SMatrixType::Level) {
         if constexpr (std::is_same_v<Matrix, ACSRMatrix>) {
             throw std::invalid_argument("ACSRMatrix storage is only supported for delta matrices");
         } else {
-            intersectionSizes.clear();
-            intersectionSizes.shrink_to_fit();
-
             matrices.reserve(maximumIntersection + 1);
             levelToMatrix.resize(maximumIntersection + 1);
 
@@ -114,16 +208,58 @@ void SMatrixContainer<Matrix>::build(SMatrixType matrixType, VSRMatrix *vsrMatri
             }
         }
     } else {
-        // All information needed by delta matrices has been extracted into compact level buckets.
-        // Release the much heavier hash-map representation before allocating matrix values.
-        intersectionSizes.clear();
-        intersectionSizes.shrink_to_fit();
         matrices.reserve(maximumIntersection + 1);
 
         if constexpr (std::is_same_v<Matrix, ACSRMatrix>) {
+            if (patternOnly) {
+                combinedPatternBuilt = true;
+                count numberOfEntries = 0;
+                for (count s = 1; s <= maximumIntersection; ++s)
+                    numberOfEntries += deltaEntries[s].size();
+
+                const count numberOfLevels = maximumIntersection + 1;
+                const bool thresholdFits =
+                    dimension == 0
+                    || numberOfLevels <= std::numeric_limits<count>::max() / dimension;
+                // A row-major variable-level pattern avoids almost all per-level scheduling for
+                // sparse inputs. Once there are more entries than row/level slots, keeping entries
+                // grouped by their fixed level provides better locality and vectorization.
+                useRowMajorCombinedPattern =
+                    dimension == 0 ? numberOfEntries == 0
+                                   : thresholdFits && numberOfEntries <= dimension * numberOfLevels;
+                if (useRowMajorCombinedPattern) {
+                    combinedRowIdx.assign(dimension + 1, 0);
+                    for (count s = 1; s <= maximumIntersection; ++s) {
+                        for (const auto &entry : deltaEntries[s])
+                            ++combinedRowIdx[entry.row + 1];
+                    }
+                    std::partial_sum(combinedRowIdx.begin(), combinedRowIdx.end(),
+                                     combinedRowIdx.begin());
+
+                    combinedColumnIdx.resize(numberOfEntries);
+                    combinedLevels.resize(numberOfEntries);
+                    auto positions = combinedRowIdx;
+                    for (count s = 1; s <= maximumIntersection; ++s) {
+                        for (const auto &entry : deltaEntries[s]) {
+                            const index destination = positions[entry.row]++;
+                            combinedColumnIdx[destination] = entry.column;
+                            combinedLevels[destination] = s;
+                        }
+                    }
+                }
+            }
+
             for (count s = 1; s <= maximumIntersection + 1; ++s) {
-                matrices.emplace_back(dimension, dimension, s, deltaEntries[s], 1.0, false);
-                std::vector<Triplet>{}.swap(deltaEntries[s]);
+                auto [rowOffsets, columnIndices] = makeCsrPattern(deltaEntries[s]);
+                if (patternOnly) {
+                    matrices.emplace_back(dimension, dimension, s, std::move(rowOffsets),
+                                          std::move(columnIndices), false);
+                } else {
+                    std::vector<double> values(columnIndices.size() * s, 1.0);
+                    matrices.emplace_back(dimension, dimension, s, std::move(rowOffsets),
+                                          std::move(columnIndices), std::move(values), false);
+                }
+                std::vector<SparseEntry>{}.swap(deltaEntries[s]);
                 levelToMatrix.push_back(matrices.size() - 1);
             }
         } else {
@@ -137,8 +273,16 @@ void SMatrixContainer<Matrix>::build(SMatrixType matrixType, VSRMatrix *vsrMatri
                     continue;
                 }
 
-                matrices.emplace_back(dimension, deltaEntries[s], 0.0, false);
-                std::vector<Triplet>{}.swap(deltaEntries[s]);
+                auto [rowOffsets, columnIndices] = makeCsrPattern(deltaEntries[s]);
+                std::vector<double> values(columnIndices.size(), 1.0);
+                if constexpr (std::is_same_v<Matrix, CSRMatrix>) {
+                    matrices.emplace_back(dimension, dimension, std::move(rowOffsets),
+                                          std::move(columnIndices), std::move(values), 0.0, false);
+                } else {
+                    matrices.emplace_back(dimension, dimension, rowOffsets, columnIndices, values,
+                                          0.0, false);
+                }
+                std::vector<SparseEntry>{}.swap(deltaEntries[s]);
                 levelToMatrix.push_back(matrices.size() - 1);
             }
         }
@@ -160,10 +304,57 @@ void SMatrixContainer<Matrix>::build(SMatrixType matrixType, VSRMatrix *vsrMatri
 }
 
 template <typename Matrix>
+void SMatrixContainer<Matrix>::multiplyInto(const VSRMatrix &input, VSRMatrix &output) const {
+    if constexpr (!std::is_same_v<Matrix, ACSRMatrix>) {
+        throw std::logic_error("Combined multiplication is supported only for ACSRMatrix");
+    } else {
+        if (!built || !combinedPatternBuilt)
+            throw std::logic_error("No combined ACSR delta pattern has been built");
+
+        if (useRowMajorCombinedPattern) {
+#pragma omp parallel for schedule(guided)
+            for (omp_index row = 0; row < static_cast<omp_index>(hGraph.upperEdgeIdBound());
+                 ++row) {
+                double *const outputRow = &output(row, 0);
+                for (index entry = combinedRowIdx[row]; entry < combinedRowIdx[row + 1]; ++entry) {
+                    const double *const inputRow = &input(combinedColumnIdx[entry], 0);
+                    const count level = combinedLevels[entry];
+                    for (index value = 0; value < level; ++value)
+                        outputRow[value] += inputRow[value];
+                }
+            }
+            return;
+        }
+
+#pragma omp parallel
+        {
+            for (const auto &matrix : matrices) {
+#pragma omp for schedule(guided)
+                for (omp_index row = 0; row < static_cast<omp_index>(hGraph.upperEdgeIdBound());
+                     ++row) {
+                    double *const outputRow = &output(row, 0);
+                    for (index entry = matrix.rowIdx[row]; entry < matrix.rowIdx[row + 1];
+                         ++entry) {
+                        const double *const inputRow = &input(matrix.columnIdx[entry], 0);
+                        std::transform(inputRow, inputRow + matrix.k, outputRow, outputRow,
+                                       std::plus<double>{});
+                    }
+                }
+            }
+        }
+    }
+}
+
+template <typename Matrix>
 void SMatrixContainer<Matrix>::reset() noexcept {
     matrices.clear();
     levelToMatrix.clear();
+    combinedRowIdx.clear();
+    combinedColumnIdx.clear();
+    combinedLevels.clear();
     built = false;
+    combinedPatternBuilt = false;
+    useRowMajorCombinedPattern = false;
 }
 
 template <typename Matrix>

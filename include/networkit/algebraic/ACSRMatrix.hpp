@@ -3,6 +3,7 @@
 
 #include <algorithm>
 #include <stdexcept>
+#include <utility>
 #include <vector>
 
 #include <networkit/Globals.hpp>
@@ -12,6 +13,8 @@ namespace NetworKit {
 
 class DenseMatrix;
 class VSRMatrix;
+template <typename Matrix>
+class SMatrixContainer;
 
 /** Represents an augmented matrix entry with @a values.size() values. */
 struct ACSRTriplet {
@@ -28,6 +31,9 @@ struct ACSRTriplet {
  * values. The value count is fixed when the matrix is constructed.
  */
 class ACSRMatrix final {
+    template <typename Matrix>
+    friend class SMatrixContainer;
+
     std::vector<index> rowIdx;
     std::vector<index> columnIdx;
     std::vector<double> nonZeros;
@@ -45,6 +51,11 @@ class ACSRMatrix final {
     static void validateValues(const std::vector<double> &values, count k) {
         if (values.size() != k)
             throw std::invalid_argument("Each ACSRMatrix entry must contain exactly k values");
+    }
+
+    void assureValues() const {
+        if (!columnIdx.empty() && nonZeros.empty())
+            throw std::logic_error("This ACSRMatrix stores only a sparsity pattern");
     }
 
 public:
@@ -213,6 +224,45 @@ public:
                const std::vector<index> &columnIdx, const std::vector<double> &nonZeros, count k,
                bool isSorted = false)
         : ACSRMatrix(nRows, nCols, k, rowIdx, columnIdx, nonZeros, isSorted) {}
+
+    /** Constructs a value-bearing matrix by taking ownership of flattened CSR arrays. */
+    ACSRMatrix(count nRows, count nCols, count k, std::vector<index> &&rowIdx,
+               std::vector<index> &&columnIdx, std::vector<double> &&nonZeros,
+               bool isSorted = false)
+        : rowIdx(std::move(rowIdx)), columnIdx(std::move(columnIdx)), nonZeros(std::move(nonZeros)),
+          nRows(nRows), nCols(nCols), k(k), isSorted(isSorted) {
+        validateK(k);
+        if (this->rowIdx.size() != nRows + 1 || this->rowIdx.front() != 0
+            || this->rowIdx.back() != this->columnIdx.size()
+            || !std::is_sorted(this->rowIdx.begin(), this->rowIdx.end())
+            || this->nonZeros.size() != this->columnIdx.size() * k)
+            throw std::invalid_argument("Invalid ACSRMatrix CSR arrays");
+
+        for (index column : this->columnIdx) {
+            if (column >= nCols)
+                throw std::out_of_range("ACSRMatrix column index out of range");
+        }
+    }
+
+    /**
+     * Constructs a pattern-only matrix by taking ownership of CSR index arrays. Value-based
+     * operations are unavailable, but multiplyInto() can use the pattern directly.
+     */
+    ACSRMatrix(count nRows, count nCols, count k, std::vector<index> &&rowIdx,
+               std::vector<index> &&columnIdx, bool isSorted = false)
+        : rowIdx(std::move(rowIdx)), columnIdx(std::move(columnIdx)), nonZeros(), nRows(nRows),
+          nCols(nCols), k(k), isSorted(isSorted) {
+        validateK(k);
+        if (this->rowIdx.size() != nRows + 1 || this->rowIdx.front() != 0
+            || this->rowIdx.back() != this->columnIdx.size()
+            || !std::is_sorted(this->rowIdx.begin(), this->rowIdx.end()))
+            throw std::invalid_argument("Invalid ACSRMatrix pattern arrays");
+
+        for (index column : this->columnIdx) {
+            if (column >= nCols)
+                throw std::out_of_range("ACSRMatrix column index out of range");
+        }
+    }
 
     ACSRMatrix(const ACSRMatrix &other) = default;
     ACSRMatrix(ACSRMatrix &&other) noexcept = default;

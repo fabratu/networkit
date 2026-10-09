@@ -49,9 +49,18 @@ public:
      * @param vsrMatrix Optional output for the per-edge variable sparse row matrix.
      * @param alphaVector Optional output for one damping factor per level. Each factor is
      *                    <code>1 / (maximumLevelDegree + 1)</code>.
+     * @param patternOnly Whether ACSR delta matrices should omit their augmented values and enable
+     *                    combined multiplication through SMatrixContainer::multiplyInto().
      */
     void build(SMatrixType type = SMatrixType::Level, VSRMatrix *vsrMatrix = nullptr,
-               std::vector<double> *alphaVector = nullptr);
+               std::vector<double> *alphaVector = nullptr, bool patternOnly = false);
+
+    /**
+     * Applies all ACSR delta levels inside one parallel region. Sparse patterns use a row-major
+     * variable-level traversal, while denser patterns retain level-major traversal for locality.
+     * This is available after an ACSR delta build with @a patternOnly enabled.
+     */
+    void multiplyInto(const VSRMatrix &input, VSRMatrix &output) const;
 
     /** Removes all matrices and level mappings from the container. */
     void reset() noexcept;
@@ -166,8 +175,13 @@ private:
     const Hypergraph &hGraph;
     std::vector<Matrix> matrices;
     std::vector<index> levelToMatrix;
+    std::vector<index> combinedRowIdx;
+    std::vector<index> combinedColumnIdx;
+    std::vector<count> combinedLevels;
     SMatrixType type{SMatrixType::Level};
     bool built{false};
+    bool combinedPatternBuilt{false};
+    bool useRowMajorCombinedPattern{false};
 };
 
 } // namespace NetworKit

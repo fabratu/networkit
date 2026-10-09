@@ -18,7 +18,7 @@ HyperKatzCentralityDeltaInPlace::HyperKatzCentralityDeltaInPlace(const Hypergrap
         throw std::invalid_argument("The ranking tolerance must be non-negative");
 
     std::vector<double> levelAlphas;
-    matrices.build(SMatrixType::Delta, &currentPaths, &levelAlphas);
+    matrices.build(SMatrixType::Delta, &currentPaths, &levelAlphas, true);
     nextPaths = currentPaths;
     nextPaths.reset();
 
@@ -104,11 +104,11 @@ bool HyperKatzCentralityDeltaInPlace::areSufficientlyRanked(edgeid high, edgeid 
 void HyperKatzCentralityDeltaInPlace::doIteration() {
     nextPaths.reset();
 
-    matrices.forLevels([&](count s, const ACSRMatrix &matrix) {
-        matrix.multiplyInto(currentPaths, nextPaths);
-        lowerCorrection[s - 1] *= alphas[s - 1];
-        upperCorrection[s - 1] *= alphas[s - 1];
-    });
+    matrices.multiplyInto(currentPaths, nextPaths);
+    for (index level = 0; level < matrices.getMaxLevel(); ++level) {
+        lowerCorrection[level] *= alphas[level];
+        upperCorrection[level] *= alphas[level];
+    }
 
     std::swap(currentPaths, nextPaths);
 

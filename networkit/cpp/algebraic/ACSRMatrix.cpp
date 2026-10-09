@@ -10,6 +10,7 @@
 namespace NetworKit {
 
 void ACSRMatrix::updateOther(DenseMatrix &other) const {
+    assureValues();
 #pragma omp parallel for schedule(guided)
     for (omp_index i = 0; i < static_cast<omp_index>(nRows); ++i) {
         for (index entry = rowIdx[i]; entry < rowIdx[i + 1]; ++entry) {
@@ -21,6 +22,7 @@ void ACSRMatrix::updateOther(DenseMatrix &other) const {
 }
 
 void ACSRMatrix::updateOther(VSRMatrix &other) const {
+    assureValues();
 #pragma omp parallel for schedule(guided)
     for (omp_index i = 0; i < static_cast<omp_index>(nRows); ++i) {
         for (index entry = rowIdx[i]; entry < rowIdx[i + 1]; ++entry) {
@@ -46,6 +48,7 @@ void ACSRMatrix::multiplyInto(const VSRMatrix &input, VSRMatrix &output) const {
 }
 
 void ACSRMatrix::assign(const DenseMatrix &other) {
+    assureValues();
 #pragma omp parallel for schedule(guided)
     for (omp_index i = 0; i < static_cast<omp_index>(nRows); ++i) {
         for (index entry = rowIdx[i]; entry < rowIdx[i + 1]; ++entry) {
@@ -58,6 +61,7 @@ void ACSRMatrix::assign(const DenseMatrix &other) {
 }
 
 void ACSRMatrix::assign(const VSRMatrix &other) {
+    assureValues();
 #pragma omp parallel for schedule(guided)
     for (omp_index i = 0; i < static_cast<omp_index>(nRows); ++i) {
         for (index entry = rowIdx[i]; entry < rowIdx[i + 1]; ++entry) {
@@ -81,6 +85,7 @@ void ACSRMatrix::resetOther(VSRMatrix &other) const {
 }
 
 void ACSRMatrix::updateBidirectional(DenseMatrix &other) {
+    assureValues();
     assert(other.numberOfRows() >= std::max(nRows, nCols));
     assert(other.numberOfColumns() >= k);
 
