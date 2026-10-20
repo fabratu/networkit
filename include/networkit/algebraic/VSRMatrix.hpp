@@ -1,6 +1,7 @@
 #ifndef NETWORKIT_ALGEBRAIC_VSR_MATRIX_HPP_
 #define NETWORKIT_ALGEBRAIC_VSR_MATRIX_HPP_
 
+#include <cassert>
 #include <vector>
 
 #include <networkit/Globals.hpp>
@@ -46,6 +47,18 @@ public:
 
     /** Returns a mutable reference to a value in the stored prefix of row @a i. */
     double &operator()(index i, index j);
+
+    /** Returns the stored prefix of row @a i. The row must exist and have a non-empty prefix. */
+    const double *rowData(index i) const noexcept {
+        assert(i < nRows);
+        return values.data() + rowIdx[i];
+    }
+
+    /** Returns the mutable stored prefix of row @a i. */
+    double *rowData(index i) noexcept {
+        assert(i < nRows);
+        return values.data() + rowIdx[i];
+    }
 
     /** Resets all entries to zero */
     void reset();

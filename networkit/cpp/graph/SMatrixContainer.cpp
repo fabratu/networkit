@@ -7,6 +7,7 @@
 #include <type_traits>
 #include <utility>
 
+#include <omp.h>
 #include <tlx/sort/parallel_mergesort.hpp>
 
 #include <networkit/auxiliary/Parallelism.hpp>
@@ -28,9 +29,10 @@ struct SparseEntry {
     edgeid column;
 };
 
+template <typename Column = index>
 struct SparsePattern {
     std::vector<index> rowOffsets;
-    std::vector<index> columnIndices;
+    std::vector<Column> columnIndices;
 };
 
 } // namespace
@@ -218,20 +220,23 @@ void SMatrixContainer<Matrix>::build(SMatrixType matrixType, VSRMatrix *vsrMatri
         }
     }
 
-    const auto makeCsrPattern = [&](const std::vector<SparseEntry> &entries) {
+    const auto makeCsrPattern = [&](const std::vector<SparseEntry> &entries, auto columnType) {
+        using Column = decltype(columnType);
         std::vector<index> rowOffsets(dimension + 1, 0);
         for (const auto &entry : entries)
             ++rowOffsets[entry.row + 1];
         std::partial_sum(rowOffsets.begin(), rowOffsets.end(), rowOffsets.begin());
 
-        std::vector<index> columnIndices(entries.size());
+        std::vector<Column> columnIndices(entries.size());
         auto positions = rowOffsets;
         for (const auto &entry : entries)
             columnIndices[positions[entry.row]++] = entry.column;
-        return SparsePattern{std::move(rowOffsets), std::move(columnIndices)};
+        return SparsePattern<Column>{std::move(rowOffsets), std::move(columnIndices)};
     };
 
-    const auto makeCsrPatternParallel = [&](const std::vector<SparseEntry> &entries) {
+    const auto makeCsrPatternParallel = [&](const std::vector<SparseEntry> &entries,
+                                            auto columnType) {
+        using Column = decltype(columnType);
         // Four partitions keep the per-partition row-position table cache-friendly. On large
         // matrices, using every worker increases this table by hundreds of MiB and is slower.
         constexpr count maximumGroupingChunks = 4;
@@ -242,7 +247,7 @@ void SMatrixContainer<Matrix>::build(SMatrixType matrixType, VSRMatrix *vsrMatri
             dimension == 0 || numberOfChunks <= std::numeric_limits<count>::max() / dimension;
         const bool denseEnough = dimension != 0 && entries.size() / dimension >= 4;
         if (numberOfChunks < 2 || !sizeFits || !denseEnough)
-            return makeCsrPattern(entries);
+            return makeCsrPattern(entries, columnType);
 
         const auto groupEntries = [&](auto positionType) {
             using Position = decltype(positionType);
@@ -277,7 +282,7 @@ void SMatrixContainer<Matrix>::build(SMatrixType matrixType, VSRMatrix *vsrMatri
                 }
             }
 
-            std::vector<index> columnIndices(entries.size());
+            std::vector<Column> columnIndices(entries.size());
 #pragma omp parallel for schedule(static)
             for (omp_index chunk = 0; chunk < static_cast<omp_index>(numberOfChunks); ++chunk) {
                 Position *const positions = chunkRowPositions.data() + chunk * dimension;
@@ -287,7 +292,7 @@ void SMatrixContainer<Matrix>::build(SMatrixType matrixType, VSRMatrix *vsrMatri
                     columnIndices[positions[entries[entry].row]++] = entries[entry].column;
             }
 
-            return SparsePattern{std::move(rowOffsets), std::move(columnIndices)};
+            return SparsePattern<Column>{std::move(rowOffsets), std::move(columnIndices)};
         };
 
         // Every chunk position is an offset into entries, so a 32-bit table is sufficient
@@ -308,11 +313,11 @@ void SMatrixContainer<Matrix>::build(SMatrixType matrixType, VSRMatrix *vsrMatri
             // Group every exact-intersection bucket by row once. Cumulative level matrices can
             // then be populated by independent row ranges instead of scattering entries through
             // shared row positions.
-            std::vector<SparsePattern> exactPatterns(maximumIntersection + 1);
+            std::vector<SparsePattern<>> exactPatterns(maximumIntersection + 1);
             std::vector<bool> hasExactEntries(maximumIntersection + 1, false);
             for (count s = 1; s <= maximumIntersection; ++s) {
                 hasExactEntries[s] = !deltaEntries[s].empty();
-                exactPatterns[s] = makeCsrPattern(deltaEntries[s]);
+                exactPatterns[s] = makeCsrPattern(deltaEntries[s], index{});
                 std::vector<SparseEntry>{}.swap(deltaEntries[s]);
             }
 
@@ -396,88 +401,99 @@ void SMatrixContainer<Matrix>::build(SMatrixType matrixType, VSRMatrix *vsrMatri
         if constexpr (std::is_same_v<Matrix, ACSRMatrix>) {
             if (patternOnly) {
                 combinedPatternBuilt = true;
-                std::vector<SparsePattern> exactPatterns(maximumIntersection + 2);
-                count numberOfEntries = 0;
-                for (count s = 1; s <= maximumIntersection; ++s) {
-                    exactPatterns[s] = makeCsrPatternParallel(deltaEntries[s]);
-                    numberOfEntries += exactPatterns[s].columnIndices.size();
-                    std::vector<SparseEntry>{}.swap(deltaEntries[s]);
-                }
-                exactPatterns[maximumIntersection + 1].rowOffsets.assign(dimension + 1, 0);
-
-                if (alphaVector != nullptr)
-                    alphaVector->assign(maximumIntersection + 1, 1.0);
-                if (alphaVector != nullptr || !maximumLevels.empty()) {
-                    std::vector<count> degrees(dimension, 0);
-                    for (count s = maximumIntersection; s > 0; --s) {
-                        count maximumDegree = 0;
-                        const auto &pattern = exactPatterns[s];
-#pragma omp parallel for reduction(max : maximumDegree) schedule(static)
-                        for (omp_index row = 0; row < static_cast<omp_index>(dimension); ++row) {
-                            const count exactDegree =
-                                pattern.rowOffsets[row + 1] - pattern.rowOffsets[row];
-                            degrees[row] += exactDegree;
-                            maximumDegree = std::max(maximumDegree, degrees[row]);
-                            if (!maximumLevels.empty() && exactDegree != 0)
-                                maximumLevels[row] = std::max(maximumLevels[row], s);
-                        }
-                        if (alphaVector != nullptr) {
-                            (*alphaVector)[s - 1] =
-                                1.0 / (static_cast<double>(maximumDegree) + 1.0);
-                        }
+                const auto buildPatternOnly = [&](auto columnType) {
+                    using Column = decltype(columnType);
+                    std::vector<SparsePattern<Column>> exactPatterns(maximumIntersection + 2);
+                    count numberOfEntries = 0;
+                    for (count s = 1; s <= maximumIntersection; ++s) {
+                        exactPatterns[s] = makeCsrPatternParallel(deltaEntries[s], columnType);
+                        numberOfEntries += exactPatterns[s].columnIndices.size();
+                        std::vector<SparseEntry>{}.swap(deltaEntries[s]);
                     }
-                }
+                    exactPatterns[maximumIntersection + 1].rowOffsets.assign(dimension + 1, 0);
 
-                const count numberOfLevels = maximumIntersection + 1;
-                const bool thresholdFits =
-                    dimension == 0
-                    || numberOfLevels <= std::numeric_limits<count>::max() / dimension;
-                // A row-major variable-level pattern avoids almost all per-level scheduling for
-                // sparse inputs. Once there are more entries than row/level slots, keeping entries
-                // grouped by their fixed level provides better locality and vectorization.
-                useRowMajorCombinedPattern =
-                    dimension == 0 ? numberOfEntries == 0
-                                   : thresholdFits && numberOfEntries <= dimension * numberOfLevels;
-                if (useRowMajorCombinedPattern) {
-                    combinedRowIdx.assign(dimension + 1, 0);
-#pragma omp parallel for schedule(static)
-                    for (omp_index row = 0; row < static_cast<omp_index>(dimension); ++row) {
-                        count rowEntries = 0;
-                        for (count s = 1; s <= maximumIntersection; ++s) {
-                            rowEntries += exactPatterns[s].rowOffsets[row + 1]
-                                          - exactPatterns[s].rowOffsets[row];
-                        }
-                        combinedRowIdx[row + 1] = rowEntries;
-                    }
-                    std::partial_sum(combinedRowIdx.begin(), combinedRowIdx.end(),
-                                     combinedRowIdx.begin());
-
-                    combinedColumnIdx.resize(numberOfEntries);
-                    combinedLevels.resize(numberOfEntries);
-#pragma omp parallel for schedule(guided)
-                    for (omp_index row = 0; row < static_cast<omp_index>(dimension); ++row) {
-                        index destination = combinedRowIdx[row];
-                        for (count s = 1; s <= maximumIntersection; ++s) {
+                    if (alphaVector != nullptr)
+                        alphaVector->assign(maximumIntersection + 1, 1.0);
+                    if (alphaVector != nullptr || !maximumLevels.empty()) {
+                        std::vector<count> degrees(dimension, 0);
+                        for (count s = maximumIntersection; s > 0; --s) {
+                            count maximumDegree = 0;
                             const auto &pattern = exactPatterns[s];
-                            for (index entry = pattern.rowOffsets[row];
-                                 entry < pattern.rowOffsets[row + 1]; ++entry) {
-                                combinedColumnIdx[destination] = pattern.columnIndices[entry];
-                                combinedLevels[destination] = s;
-                                ++destination;
+#pragma omp parallel for reduction(max : maximumDegree) schedule(static)
+                            for (omp_index row = 0; row < static_cast<omp_index>(dimension);
+                                 ++row) {
+                                const count exactDegree =
+                                    pattern.rowOffsets[row + 1] - pattern.rowOffsets[row];
+                                degrees[row] += exactDegree;
+                                maximumDegree = std::max(maximumDegree, degrees[row]);
+                                if (!maximumLevels.empty() && exactDegree != 0)
+                                    maximumLevels[row] = std::max(maximumLevels[row], s);
+                            }
+                            if (alphaVector != nullptr) {
+                                (*alphaVector)[s - 1] =
+                                    1.0 / (static_cast<double>(maximumDegree) + 1.0);
                             }
                         }
                     }
-                }
 
-                for (count s = 1; s <= maximumIntersection + 1; ++s) {
-                    auto &pattern = exactPatterns[s];
-                    matrices.emplace_back(dimension, dimension, s, std::move(pattern.rowOffsets),
-                                          std::move(pattern.columnIndices), false, true);
-                    levelToMatrix.push_back(matrices.size() - 1);
-                }
+                    const count numberOfLevels = maximumIntersection + 1;
+                    const bool thresholdFits =
+                        dimension == 0
+                        || numberOfLevels <= std::numeric_limits<count>::max() / dimension;
+                    // A row-major variable-level pattern avoids almost all per-level scheduling for
+                    // sparse inputs. Once there are more entries than row/level slots, keeping
+                    // entries grouped by their fixed level provides better locality and
+                    // vectorization.
+                    useRowMajorCombinedPattern =
+                        dimension == 0
+                            ? numberOfEntries == 0
+                            : thresholdFits && numberOfEntries <= dimension * numberOfLevels;
+                    if (useRowMajorCombinedPattern) {
+                        combinedRowIdx.assign(dimension + 1, 0);
+#pragma omp parallel for schedule(static)
+                        for (omp_index row = 0; row < static_cast<omp_index>(dimension); ++row) {
+                            count rowEntries = 0;
+                            for (count s = 1; s <= maximumIntersection; ++s) {
+                                rowEntries += exactPatterns[s].rowOffsets[row + 1]
+                                              - exactPatterns[s].rowOffsets[row];
+                            }
+                            combinedRowIdx[row + 1] = rowEntries;
+                        }
+                        std::partial_sum(combinedRowIdx.begin(), combinedRowIdx.end(),
+                                         combinedRowIdx.begin());
+
+                        combinedColumnIdx.resize(numberOfEntries);
+                        combinedLevels.resize(numberOfEntries);
+#pragma omp parallel for schedule(guided)
+                        for (omp_index row = 0; row < static_cast<omp_index>(dimension); ++row) {
+                            index destination = combinedRowIdx[row];
+                            for (count s = 1; s <= maximumIntersection; ++s) {
+                                const auto &pattern = exactPatterns[s];
+                                for (index entry = pattern.rowOffsets[row];
+                                     entry < pattern.rowOffsets[row + 1]; ++entry) {
+                                    combinedColumnIdx[destination] = pattern.columnIndices[entry];
+                                    combinedLevels[destination] = s;
+                                    ++destination;
+                                }
+                            }
+                        }
+                    }
+
+                    for (count s = 1; s <= maximumIntersection + 1; ++s) {
+                        auto &pattern = exactPatterns[s];
+                        matrices.emplace_back(dimension, dimension, s,
+                                              std::move(pattern.rowOffsets),
+                                              std::move(pattern.columnIndices), false, true);
+                        levelToMatrix.push_back(matrices.size() - 1);
+                    }
+                };
+                if (dimension <= std::numeric_limits<std::uint32_t>::max())
+                    buildPatternOnly(std::uint32_t{});
+                else
+                    buildPatternOnly(index{});
             } else {
                 for (count s = 1; s <= maximumIntersection + 1; ++s) {
-                    auto [rowOffsets, columnIndices] = makeCsrPattern(deltaEntries[s]);
+                    auto [rowOffsets, columnIndices] = makeCsrPattern(deltaEntries[s], index{});
                     std::vector<double> values(columnIndices.size() * s, 1.0);
                     matrices.emplace_back(dimension, dimension, s, std::move(rowOffsets),
                                           std::move(columnIndices), std::move(values), false);
@@ -488,9 +504,9 @@ void SMatrixContainer<Matrix>::build(SMatrixType matrixType, VSRMatrix *vsrMatri
         } else {
             if (patternOnly) {
                 if constexpr (std::is_same_v<Matrix, DCSRMatrix>) {
-                    std::vector<SparsePattern> exactPatterns(maximumIntersection + 2);
+                    std::vector<SparsePattern<>> exactPatterns(maximumIntersection + 2);
                     for (count s = 1; s <= maximumIntersection; ++s) {
-                        exactPatterns[s] = makeCsrPatternParallel(deltaEntries[s]);
+                        exactPatterns[s] = makeCsrPatternParallel(deltaEntries[s], index{});
                         std::vector<SparseEntry>{}.swap(deltaEntries[s]);
                     }
                     exactPatterns[maximumIntersection + 1].rowOffsets.assign(dimension + 1, 0);
@@ -536,7 +552,7 @@ void SMatrixContainer<Matrix>::build(SMatrixType matrixType, VSRMatrix *vsrMatri
                         continue;
                     }
 
-                    auto [rowOffsets, columnIndices] = makeCsrPattern(deltaEntries[s]);
+                    auto [rowOffsets, columnIndices] = makeCsrPattern(deltaEntries[s], index{});
                     std::vector<double> values(columnIndices.size(), 1.0);
                     if constexpr (std::is_same_v<Matrix, CSRMatrix>) {
                         matrices.emplace_back(dimension, dimension, std::move(rowOffsets),
@@ -591,33 +607,69 @@ void SMatrixContainer<Matrix>::multiplyInto(const VSRMatrix &input, VSRMatrix &o
             return;
         }
 
+        std::vector<double> levelOneValues(hGraph.numberOfEdges());
+        std::vector<index> levelOneRowBounds;
 #pragma omp parallel
         {
+#pragma omp for schedule(static)
+            for (omp_index row = 0; row < static_cast<omp_index>(levelOneValues.size()); ++row)
+                levelOneValues[row] = input.rowData(row)[0];
+
             for (const auto &matrix : matrices) {
                 if (matrix.k == 1) {
-                    if (matrix.compressedRows) {
-#pragma omp for schedule(static)
-                        for (omp_index compressedRow = 0;
-                             compressedRow < static_cast<omp_index>(matrix.nonZeroRows.size());
-                             ++compressedRow) {
-                            const index row = matrix.nonZeroRows[compressedRow];
-                            double sum = output(row, 0);
-                            for (index entry = matrix.rowIdx[compressedRow];
-                                 entry < matrix.rowIdx[compressedRow + 1]; ++entry)
-                                sum += input(matrix.columnIdx[entry], 0);
-                            output(row, 0) = sum;
+                    // Every VSR row stores column zero. Stage it contiguously so the hot loop
+                    // needs only one indexed read per input edge.
+                    // Divide cumulative entries among threads, keeping each row on one thread
+                    // so its accumulation order stays unchanged.
+#pragma omp single
+                    {
+                        const index rows = matrix.rowIdx.size() - 1;
+                        const index threads = omp_get_num_threads();
+                        const index entries = matrix.rowIdx.back();
+                        levelOneRowBounds.resize(threads + 1);
+                        levelOneRowBounds.front() = 0;
+                        levelOneRowBounds.back() = rows;
+                        for (index thread = 1; thread < threads; ++thread) {
+                            const index target =
+                                entries / threads * thread + (entries % threads) * thread / threads;
+                            levelOneRowBounds[thread] =
+                                entries == 0
+                                    ? rows / threads * thread + (rows % threads) * thread / threads
+                                    : std::lower_bound(matrix.rowIdx.begin(), matrix.rowIdx.end(),
+                                                       target)
+                                          - matrix.rowIdx.begin();
                         }
-                        continue;
                     }
-#pragma omp for schedule(static)
-                    for (omp_index row = 0; row < static_cast<omp_index>(hGraph.upperEdgeIdBound());
-                         ++row) {
-                        double sum = output(row, 0);
-                        for (index entry = matrix.rowIdx[row]; entry < matrix.rowIdx[row + 1];
-                             ++entry)
-                            sum += input(matrix.columnIdx[entry], 0);
-                        output(row, 0) = sum;
-                    }
+
+                    const index thread = omp_get_thread_num();
+                    const index begin = levelOneRowBounds[thread];
+                    const index end = levelOneRowBounds[thread + 1];
+                    const auto multiplyLevelOne = [&](const auto &columns) {
+                        if (matrix.compressedRows) {
+                            for (index compressedRow = begin; compressedRow < end;
+                                 ++compressedRow) {
+                                const index row = matrix.nonZeroRows[compressedRow];
+                                double sum = output.rowData(row)[0];
+                                for (index entry = matrix.rowIdx[compressedRow];
+                                     entry < matrix.rowIdx[compressedRow + 1]; ++entry)
+                                    sum += levelOneValues[columns[entry]];
+                                output.rowData(row)[0] = sum;
+                            }
+                        } else {
+                            for (index row = begin; row < end; ++row) {
+                                double sum = output.rowData(row)[0];
+                                for (index entry = matrix.rowIdx[row];
+                                     entry < matrix.rowIdx[row + 1]; ++entry)
+                                    sum += levelOneValues[columns[entry]];
+                                output.rowData(row)[0] = sum;
+                            }
+                        }
+                    };
+                    if (matrix.compactColumns)
+                        multiplyLevelOne(matrix.compactColumnIdx);
+                    else
+                        multiplyLevelOne(matrix.columnIdx);
+#pragma omp barrier
                     continue;
                 }
                 if (matrix.compressedRows) {
@@ -628,7 +680,7 @@ void SMatrixContainer<Matrix>::multiplyInto(const VSRMatrix &input, VSRMatrix &o
                         double *const outputRow = &output(matrix.nonZeroRows[compressedRow], 0);
                         for (index entry = matrix.rowIdx[compressedRow];
                              entry < matrix.rowIdx[compressedRow + 1]; ++entry) {
-                            const double *const inputRow = &input(matrix.columnIdx[entry], 0);
+                            const double *const inputRow = &input(matrix.columnAt(entry), 0);
                             std::transform(inputRow, inputRow + matrix.k, outputRow, outputRow,
                                            std::plus<double>{});
                         }
@@ -641,7 +693,7 @@ void SMatrixContainer<Matrix>::multiplyInto(const VSRMatrix &input, VSRMatrix &o
                     double *const outputRow = &output(row, 0);
                     for (index entry = matrix.rowIdx[row]; entry < matrix.rowIdx[row + 1];
                          ++entry) {
-                        const double *const inputRow = &input(matrix.columnIdx[entry], 0);
+                        const double *const inputRow = &input(matrix.columnAt(entry), 0);
                         std::transform(inputRow, inputRow + matrix.k, outputRow, outputRow,
                                        std::plus<double>{});
                     }

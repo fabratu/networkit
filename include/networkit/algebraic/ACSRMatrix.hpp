@@ -2,6 +2,8 @@
 #define NETWORKIT_ALGEBRAIC_ACSR_MATRIX_HPP_
 
 #include <algorithm>
+#include <cstdint>
+#include <limits>
 #include <stdexcept>
 #include <utility>
 #include <vector>
@@ -38,6 +40,7 @@ class ACSRMatrix final {
     std::vector<index> rowIdx;
     std::vector<index> nonZeroRows;
     std::vector<index> columnIdx;
+    std::vector<std::uint32_t> compactColumnIdx;
     std::vector<double> nonZeros;
 
     count nRows;
@@ -45,7 +48,55 @@ class ACSRMatrix final {
     count k;
     bool isSorted;
     bool compressedRows = false;
+    bool compactColumns = false;
     bool patternOnly = false;
+
+    index columnAt(index entry) const noexcept {
+        return compactColumns ? compactColumnIdx[entry] : columnIdx[entry];
+    }
+
+    void compactColumnsIfPossible() {
+        if (nCols > std::numeric_limits<std::uint32_t>::max())
+            return;
+        compactColumnIdx.assign(columnIdx.begin(), columnIdx.end());
+        std::vector<index>{}.swap(columnIdx);
+        compactColumns = true;
+    }
+
+    void finishPatternConstruction(bool compressEmptyRows) {
+        validateK(k);
+        if (rowIdx.size() != nRows + 1 || rowIdx.front() != 0 || rowIdx.back() != nnz()
+            || !std::is_sorted(rowIdx.begin(), rowIdx.end()))
+            throw std::invalid_argument("Invalid ACSRMatrix pattern arrays");
+
+        for (index entry = 0; entry < nnz(); ++entry) {
+            if (columnAt(entry) >= nCols)
+                throw std::out_of_range("ACSRMatrix column index out of range");
+        }
+
+        if (compressEmptyRows) {
+            count activeRows = 0;
+            for (index row = 0; row < nRows; ++row)
+                activeRows += rowIdx[row] != rowIdx[row + 1];
+
+            // DCSR uses one row ID and one offset per nonempty row. Keep CSR when
+            // its row-offset array is no larger, particularly for dense level 1.
+            if (activeRows < nRows - activeRows) {
+                nonZeroRows.reserve(activeRows);
+                std::vector<index> compressedOffsets;
+                compressedOffsets.reserve(activeRows + 1);
+                compressedOffsets.push_back(0);
+                for (index row = 0; row < nRows; ++row) {
+                    if (rowIdx[row] != rowIdx[row + 1]) {
+                        nonZeroRows.push_back(row);
+                        compressedOffsets.push_back(rowIdx[row + 1]);
+                    }
+                }
+                rowIdx.swap(compressedOffsets);
+                compressedRows = true;
+            }
+        }
+    }
 
     static void validateK(count k) {
         if (k == 0)
@@ -114,6 +165,7 @@ public:
             std::copy(triplet.values.begin(), triplet.values.end(),
                       nonZeros.begin() + destination * k);
         }
+        compactColumnsIfPossible();
     }
 
     /** Constructs a rectangular matrix from augmented triplets. */
@@ -145,6 +197,7 @@ public:
         auto positions = rowIdx;
         for (const auto &entry : pattern)
             columnIdx[positions[entry.row]++] = entry.column;
+        compactColumnsIfPossible();
     }
 
     /** Constructs a matrix from columns and augmented values grouped by row. */
@@ -169,6 +222,7 @@ public:
             }
             rowIdx[i + 1] = this->columnIdx.size();
         }
+        compactColumnsIfPossible();
     }
 
     /** Constructs a matrix from columns and augmented values grouped by row. */
@@ -197,6 +251,7 @@ public:
             validateValues(values, k);
             this->nonZeros.insert(this->nonZeros.end(), values.begin(), values.end());
         }
+        compactColumnsIfPossible();
     }
 
     /** Constructs a matrix from CSR arrays and one augmented value vector per entry. */
@@ -221,6 +276,7 @@ public:
             if (column >= nCols)
                 throw std::out_of_range("ACSRMatrix column index out of range");
         }
+        compactColumnsIfPossible();
     }
 
     /** Constructs a matrix from CSR arrays and flattened augmented values. */
@@ -246,6 +302,7 @@ public:
             if (column >= nCols)
                 throw std::out_of_range("ACSRMatrix column index out of range");
         }
+        compactColumnsIfPossible();
     }
 
     /**
@@ -258,39 +315,18 @@ public:
                bool compressEmptyRows = false)
         : rowIdx(std::move(rowIdx)), columnIdx(std::move(columnIdx)), nonZeros(), nRows(nRows),
           nCols(nCols), k(k), isSorted(isSorted), patternOnly(true) {
-        validateK(k);
-        if (this->rowIdx.size() != nRows + 1 || this->rowIdx.front() != 0
-            || this->rowIdx.back() != this->columnIdx.size()
-            || !std::is_sorted(this->rowIdx.begin(), this->rowIdx.end()))
-            throw std::invalid_argument("Invalid ACSRMatrix pattern arrays");
+        finishPatternConstruction(compressEmptyRows);
+        compactColumnsIfPossible();
+    }
 
-        for (index column : this->columnIdx) {
-            if (column >= nCols)
-                throw std::out_of_range("ACSRMatrix column index out of range");
-        }
-
-        if (compressEmptyRows) {
-            count activeRows = 0;
-            for (index row = 0; row < nRows; ++row)
-                activeRows += this->rowIdx[row] != this->rowIdx[row + 1];
-
-            // DCSR uses one row ID and one offset per nonempty row. Keep CSR when
-            // its row-offset array is no larger, particularly for dense level 1.
-            if (activeRows < nRows - activeRows) {
-                nonZeroRows.reserve(activeRows);
-                std::vector<index> compressedOffsets;
-                compressedOffsets.reserve(activeRows + 1);
-                compressedOffsets.push_back(0);
-                for (index row = 0; row < nRows; ++row) {
-                    if (this->rowIdx[row] != this->rowIdx[row + 1]) {
-                        nonZeroRows.push_back(row);
-                        compressedOffsets.push_back(this->rowIdx[row + 1]);
-                    }
-                }
-                this->rowIdx.swap(compressedOffsets);
-                compressedRows = true;
-            }
-        }
+    /** Constructs a pattern-only matrix with directly packed 32-bit column indices. */
+    ACSRMatrix(count nRows, count nCols, count k, std::vector<index> &&rowIdx,
+               std::vector<std::uint32_t> &&columnIdx, bool isSorted = false,
+               bool compressEmptyRows = false)
+        : rowIdx(std::move(rowIdx)), compactColumnIdx(std::move(columnIdx)), nonZeros(),
+          nRows(nRows), nCols(nCols), k(k), isSorted(isSorted), compactColumns(true),
+          patternOnly(true) {
+        finishPatternConstruction(compressEmptyRows);
     }
 
     ACSRMatrix(const ACSRMatrix &other) = default;
@@ -326,7 +362,18 @@ public:
     void addUnitValuesInto(const Vector &input, Vector &output) const;
 
     /** Returns the number of stored entries, including for a pattern-only matrix. */
-    count nnz() const noexcept { return columnIdx.size(); }
+    count nnz() const noexcept {
+        return compactColumns ? compactColumnIdx.size() : columnIdx.size();
+    }
+
+    /** Returns whether columns are stored as 32-bit IDs. */
+    bool hasCompactColumns() const noexcept { return compactColumns; }
+
+    /** Returns bytes used by column IDs, excluding vector overhead. */
+    count columnIndexBytes() const noexcept {
+        return compactColumns ? compactColumnIdx.size() * sizeof(std::uint32_t)
+                              : columnIdx.size() * sizeof(index);
+    }
 
     /** Returns whether this pattern stores offsets only for nonempty rows. */
     bool hasCompressedRows() const noexcept { return compressedRows; }

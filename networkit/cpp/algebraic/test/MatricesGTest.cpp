@@ -5,6 +5,8 @@
  *      Author: Michael Wegner (michael.wegner@student.kit.edu)
  */
 
+#include <cstdint>
+#include <limits>
 #include <type_traits>
 #include <utility>
 
@@ -211,6 +213,29 @@ TEST(ACSRMatrixGTest, testPatternOnlyMultiply) {
     EXPECT_DOUBLE_EQ(output(1, 0), 1.0);
     EXPECT_DOUBLE_EQ(output(1, 1), 2.0);
     EXPECT_THROW(matrix.updateOther(output), std::logic_error);
+}
+
+TEST(ACSRMatrixGTest, testCompactColumnIndicesAndWideFallback) {
+    const std::vector<index> rowOffsets{0, 2, 3};
+    ACSRMatrix directCompact(2, 3, 1, std::vector<index>(rowOffsets),
+                             std::vector<std::uint32_t>{1, 2, 0});
+    ACSRMatrix convertedCompact(2, 3, 1, std::vector<index>(rowOffsets),
+                                std::vector<index>{1, 2, 0});
+    EXPECT_TRUE(directCompact.hasCompactColumns());
+    EXPECT_TRUE(convertedCompact.hasCompactColumns());
+    EXPECT_EQ(directCompact.columnIndexBytes(), 3 * sizeof(std::uint32_t));
+    EXPECT_EQ(convertedCompact.columnIndexBytes(), directCompact.columnIndexBytes());
+
+    const Vector input({2.0, 3.0, 5.0});
+    Vector result(2, 0.0);
+    directCompact.addUnitValuesInto(input, result);
+    EXPECT_EQ(result, Vector({8.0, 2.0}));
+
+    const index largeColumn = static_cast<index>(std::numeric_limits<std::uint32_t>::max()) + 1;
+    ACSRMatrix wide(1, largeColumn + 1, 1, std::vector<index>{0, 1},
+                    std::vector<index>{largeColumn});
+    EXPECT_FALSE(wide.hasCompactColumns());
+    EXPECT_EQ(wide.columnIndexBytes(), sizeof(index));
 }
 
 TEST(DCSRMatrixGTest, testConstructorsAndMatrixVectorProduct) {

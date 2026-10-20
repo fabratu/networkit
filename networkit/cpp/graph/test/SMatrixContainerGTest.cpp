@@ -1,3 +1,5 @@
+#include <cstdint>
+
 #include <gtest/gtest.h>
 
 #include <networkit/algebraic/ACSRMatrix.hpp>
@@ -303,8 +305,16 @@ TEST(SMatrixContainerGTest, testParallelPatternOnlyACSRBuildAndMultiply) {
     for (index row = 0; row < hGraph.numberOfEdges(); ++row)
         EXPECT_DOUBLE_EQ(output(row, 0), 9.0);
 
+    input(0, 0) = 2.0;
+    output.reset();
+    container.multiplyInto(input, output);
+    for (index row = 0; row < hGraph.numberOfEdges(); ++row)
+        EXPECT_DOUBLE_EQ(output(row, 0), row == 0 ? 9.0 : 10.0);
+
     const auto &pattern = container.getMatrix(1);
     EXPECT_EQ(pattern.nnz(), 90);
+    EXPECT_TRUE(pattern.hasCompactColumns());
+    EXPECT_EQ(pattern.columnIndexBytes(), pattern.nnz() * sizeof(std::uint32_t));
     Vector vectorInput(hGraph.numberOfEdges(), 1.0);
     Vector vectorOutput(hGraph.numberOfEdges(), 2.0);
     pattern.addUnitValuesInto(vectorInput, vectorOutput);

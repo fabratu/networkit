@@ -35,6 +35,7 @@ const double &VSRMatrix::operator()(index i, index j) const {
     static const double zero = 0.0;
     const index rowLength = rowIdx[i + 1] - rowIdx[i];
     return j < rowLength ? values[rowIdx[i] + j] : zero;
+    // return values[rowIdx[i] + j];
 }
 
 double &VSRMatrix::operator()(index i, index j) {

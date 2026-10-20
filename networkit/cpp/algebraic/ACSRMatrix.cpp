@@ -42,7 +42,7 @@ void ACSRMatrix::multiplyInto(const VSRMatrix &input, VSRMatrix &output) const {
              compressedRow < static_cast<omp_index>(nonZeroRows.size()); ++compressedRow) {
             double *const outputRow = &output(nonZeroRows[compressedRow], 0);
             for (index entry = rowIdx[compressedRow]; entry < rowIdx[compressedRow + 1]; ++entry) {
-                const double *const inputRow = &input(columnIdx[entry], 0);
+                const double *const inputRow = &input(columnAt(entry), 0);
                 std::transform(inputRow, inputRow + k, outputRow, outputRow, std::plus<double>{});
             }
         }
@@ -54,7 +54,7 @@ void ACSRMatrix::multiplyInto(const VSRMatrix &input, VSRMatrix &output) const {
             continue;
         double *const outputRow = &output(i, 0);
         for (index entry = rowIdx[i]; entry < rowIdx[i + 1]; ++entry) {
-            const double *const inputRow = &input(columnIdx[entry], 0);
+            const double *const inputRow = &input(columnAt(entry), 0);
             std::transform(inputRow, inputRow + k, outputRow, outputRow, std::plus<double>{});
         }
     }
@@ -69,7 +69,7 @@ void ACSRMatrix::addUnitValuesInto(const Vector &input, Vector &output) const {
              compressedRow < static_cast<omp_index>(nonZeroRows.size()); ++compressedRow) {
             double sum = 0.0;
             for (index entry = rowIdx[compressedRow]; entry < rowIdx[compressedRow + 1]; ++entry)
-                sum += input[columnIdx[entry]];
+                sum += input[columnAt(entry)];
             output[nonZeroRows[compressedRow]] += sum;
         }
         return;
@@ -78,7 +78,7 @@ void ACSRMatrix::addUnitValuesInto(const Vector &input, Vector &output) const {
     for (omp_index row = 0; row < static_cast<omp_index>(nRows); ++row) {
         double sum = 0.0;
         for (index entry = rowIdx[row]; entry < rowIdx[row + 1]; ++entry)
-            sum += input[columnIdx[entry]];
+            sum += input[columnAt(entry)];
         output[row] += sum;
     }
 }
@@ -88,7 +88,7 @@ void ACSRMatrix::assign(const DenseMatrix &other) {
 #pragma omp parallel for schedule(guided)
     for (omp_index i = 0; i < static_cast<omp_index>(nRows); ++i) {
         for (index entry = rowIdx[i]; entry < rowIdx[i + 1]; ++entry) {
-            const index j = columnIdx[entry];
+            const index j = columnAt(entry);
             const index valueOffset = entry * k;
             for (index value = 0; value < k; ++value)
                 nonZeros[valueOffset + value] = other(j, value);
@@ -101,7 +101,7 @@ void ACSRMatrix::assign(const VSRMatrix &other) {
 #pragma omp parallel for schedule(guided)
     for (omp_index i = 0; i < static_cast<omp_index>(nRows); ++i) {
         for (index entry = rowIdx[i]; entry < rowIdx[i + 1]; ++entry) {
-            const index j = columnIdx[entry];
+            const index j = columnAt(entry);
             const index valueOffset = entry * k;
             std::copy_n(&other(j, 0), k, nonZeros.begin() + valueOffset);
         }
@@ -135,7 +135,7 @@ void ACSRMatrix::updateBidirectional(DenseMatrix &other) {
 
     for (index i = 0; i < nRows; ++i) {
         for (index entry = rowIdx[i]; entry < rowIdx[i + 1]; ++entry) {
-            const index j = columnIdx[entry];
+            const index j = columnAt(entry);
             const index valueOffset = entry * k;
             for (index value = 0; value < k; ++value)
                 nonZeros[valueOffset + value] = other(j, value);
