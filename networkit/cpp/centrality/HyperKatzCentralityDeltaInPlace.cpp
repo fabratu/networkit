@@ -39,14 +39,11 @@ void HyperKatzCentralityDeltaInPlace::run() {
     std::chrono::steady_clock::time_point begin = std::chrono::steady_clock::now();
     const count dimension = hGraph.upperEdgeIdBound();
 
-    // currentPaths.reset();
-
     activeRanking.clear();
     activeRanking.reserve(hGraph.numberOfEdges());
     hGraph.forEdges([&](edgeid eid) { activeRanking.push_back(eid); });
 
     msLowerBound = Vector(dimension, 0.0);
-    // TODO: reset msUpperCorrection
 
     lowerCorrection = Vector(matrices.getMaxLevel(), 1.0);
 
@@ -112,39 +109,9 @@ void HyperKatzCentralityDeltaInPlace::doIteration() {
 
     std::swap(currentPaths, nextPaths);
 
-    // alphas.parallelForElements([&](const int &i, double &element) {
-    //     lowerCorrection[i] *= element;
-    //     upperCorrection[i] *= element;
-    // });
-
-    // double alpha = levelAlphas[s - 1];
-    // double alphaPower = std::pow(alpha, static_cast<double>(r));
-    // auto deg = levelMaxDegrees[s - 1];
-    // TODO: can we do this better with double saving alpha + alphaPower and do vectorized
-    // *= and = seperatly?
-    //     lowerCorrection[s - 1] *= alpha;
-    //     upperCorrection[s - 1] = alphaPower * alpha * deg / (1.0 - alpha * deg);
-    // });
-
     msLowerBound += currentPaths * lowerCorrection;
     msUpperBound = currentPaths * upperCorrection;
     msUpperBound += msLowerBound;
-
-    // INFO("LowerBound: ", msLowerBound);
-    // INFO("UpperBound: ", msUpperBound);
-    // INFO("Iter: ", r);
-    // INFO("LowerCorrection: ", lowerCorrection);
-    // INFO("UpperCorrection: ", upperCorrection);
-    // INFO("Current paths first edge: ", currentPaths.row(0));
-    // INFO("Current paths last edge: ", currentPaths.row(currentPaths.numberOfRows() - 1));
-
-    // auto lowerSetter = [&](int i, double &element) { element *= levelAlphas[i]; };
-    // auto upperSetter = [&](int i, double &element) {
-
-    // };
-
-    // lowerCorrection.forElements(lowerSetter);
-    // upperCorrection.parallelForElements(upperSetter);
 
     ++iterationReached;
 }

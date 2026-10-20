@@ -50,8 +50,9 @@ public:
      * @param vsrMatrix Optional output for the per-edge variable sparse row matrix.
      * @param alphaVector Optional output for one damping factor per level. Each factor is
      *                    <code>1 / (maximumLevelDegree + 1)</code>.
-     * @param patternOnly Whether ACSR delta matrices should omit their augmented values and enable
-     *                    combined multiplication through SMatrixContainer::multiplyInto().
+     * @param patternOnly Whether DCSR level or delta matrices, or ACSR delta matrices, should
+     *                    store implicit unit values. ACSR delta storage also enables combined
+     *                    multiplication through multiplyInto().
      */
     void build(SMatrixType type = SMatrixType::Level, VSRMatrix *vsrMatrix = nullptr,
                std::vector<double> *alphaVector = nullptr, bool patternOnly = false);

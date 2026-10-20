@@ -5,6 +5,7 @@
 #include <networkit/algebraic/ACSRMatrix.hpp>
 #include <networkit/algebraic/DenseMatrix.hpp>
 #include <networkit/algebraic/VSRMatrix.hpp>
+#include <networkit/algebraic/Vector.hpp>
 #include <networkit/auxiliary/Log.hpp>
 
 namespace NetworKit {
@@ -35,6 +36,18 @@ void ACSRMatrix::updateOther(VSRMatrix &other) const {
 }
 
 void ACSRMatrix::multiplyInto(const VSRMatrix &input, VSRMatrix &output) const {
+    if (compressedRows) {
+#pragma omp parallel for schedule(guided)
+        for (omp_index compressedRow = 0;
+             compressedRow < static_cast<omp_index>(nonZeroRows.size()); ++compressedRow) {
+            double *const outputRow = &output(nonZeroRows[compressedRow], 0);
+            for (index entry = rowIdx[compressedRow]; entry < rowIdx[compressedRow + 1]; ++entry) {
+                const double *const inputRow = &input(columnIdx[entry], 0);
+                std::transform(inputRow, inputRow + k, outputRow, outputRow, std::plus<double>{});
+            }
+        }
+        return;
+    }
 #pragma omp parallel for schedule(guided)
     for (omp_index i = 0; i < static_cast<omp_index>(nRows); ++i) {
         if (rowIdx[i] == rowIdx[i + 1])
@@ -44,6 +57,29 @@ void ACSRMatrix::multiplyInto(const VSRMatrix &input, VSRMatrix &output) const {
             const double *const inputRow = &input(columnIdx[entry], 0);
             std::transform(inputRow, inputRow + k, outputRow, outputRow, std::plus<double>{});
         }
+    }
+}
+
+void ACSRMatrix::addUnitValuesInto(const Vector &input, Vector &output) const {
+    assert(!input.isTransposed() && !output.isTransposed());
+    assert(input.getDimension() == nCols && output.getDimension() == nRows);
+    if (compressedRows) {
+#pragma omp parallel for
+        for (omp_index compressedRow = 0;
+             compressedRow < static_cast<omp_index>(nonZeroRows.size()); ++compressedRow) {
+            double sum = 0.0;
+            for (index entry = rowIdx[compressedRow]; entry < rowIdx[compressedRow + 1]; ++entry)
+                sum += input[columnIdx[entry]];
+            output[nonZeroRows[compressedRow]] += sum;
+        }
+        return;
+    }
+#pragma omp parallel for
+    for (omp_index row = 0; row < static_cast<omp_index>(nRows); ++row) {
+        double sum = 0.0;
+        for (index entry = rowIdx[row]; entry < rowIdx[row + 1]; ++entry)
+            sum += input[columnIdx[entry]];
+        output[row] += sum;
     }
 }
 

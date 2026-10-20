@@ -10,6 +10,7 @@
 #include <algorithm>
 #include <cassert>
 #include <numeric>
+#include <utility>
 #include <vector>
 
 #include <omp.h>
@@ -40,6 +41,7 @@ class DCSRGeneralMatrix {
     count nCols;
     bool isSorted;
     ValueType zero;
+    bool unitValues = false;
 
 public:
     /** Default constructor. */
@@ -135,6 +137,23 @@ public:
         }
     }
 
+    /** Takes ownership of a CSR pattern and stores its entries as implicit unit values. */
+    DCSRGeneralMatrix(count nRows, count nCols, std::vector<index> &&rowOffsets,
+                      std::vector<index> &&columnIndices, bool isSorted = false)
+        : nonZeroRows(), rowIdx(1, 0), columnIdx(std::move(columnIndices)), nonZeros(),
+          nRows(nRows), nCols(nCols), isSorted(isSorted), zero(0), unitValues(true) {
+        assert(rowOffsets.size() == nRows + 1);
+        assert(rowOffsets.front() == 0 && rowOffsets.back() == columnIdx.size());
+        nonZeroRows.reserve(std::min<count>(nRows, columnIdx.size()));
+        this->rowIdx.reserve(nonZeroRows.capacity() + 1);
+        for (index row = 0; row < nRows; ++row) {
+            if (rowOffsets[row] != rowOffsets[row + 1]) {
+                nonZeroRows.push_back(row);
+                this->rowIdx.push_back(rowOffsets[row + 1]);
+            }
+        }
+    }
+
     DCSRGeneralMatrix(const DCSRGeneralMatrix &other) = default;
     DCSRGeneralMatrix(DCSRGeneralMatrix &&other) noexcept = default;
     ~DCSRGeneralMatrix() = default;
@@ -152,7 +171,10 @@ public:
     ValueType getZero() const noexcept { return zero; }
 
     /** @return Number of stored entries. */
-    count nnz() const noexcept { return nonZeros.size(); }
+    count nnz() const noexcept { return columnIdx.size(); }
+
+    /** Whether stored entries have implicit unit values. */
+    bool hasUnitValues() const noexcept { return unitValues; }
 
     /** @return Whether column indices within each row are sorted. */
     bool sorted() const noexcept { return isSorted; }
@@ -167,12 +189,30 @@ public:
         return rowIdx[compressedRow + 1] - rowIdx[compressedRow];
     }
 
+    /** @return Largest number of stored entries in any row. */
+    count maximumRowDegree() const noexcept {
+        count maximum = 0;
+        for (index row = 0; row < nonZeroRows.size(); ++row)
+            maximum = std::max(maximum, rowIdx[row + 1] - rowIdx[row]);
+        return maximum;
+    }
+
     /** Multiplies this matrix with a column vector. */
     Vector operator*(const Vector &vector) const {
         assert(!vector.isTransposed());
         assert(nCols == vector.getDimension());
 
         Vector result(nRows, zero);
+        if (unitValues) {
+#pragma omp parallel for
+            for (omp_index r = 0; r < static_cast<omp_index>(nonZeroRows.size()); ++r) {
+                ValueType sum = zero;
+                for (index k = rowIdx[r]; k < rowIdx[r + 1]; ++k)
+                    sum += vector[columnIdx[k]];
+                result[nonZeroRows[r]] = sum;
+            }
+            return result;
+        }
 #pragma omp parallel for
         for (omp_index r = 0; r < static_cast<omp_index>(nonZeroRows.size()); ++r) {
             ValueType sum = zero;
@@ -183,6 +223,35 @@ public:
 
         return result;
     }
+
+    /** Adds the product of an implicit-unit pattern and @a input to @a output. */
+    void addUnitValuesInto(const Vector &input, Vector &output) const {
+        assert(unitValues);
+        assert(!input.isTransposed() && !output.isTransposed());
+        assert(input.getDimension() == nCols && output.getDimension() == nRows);
+#pragma omp parallel for
+        for (omp_index r = 0; r < static_cast<omp_index>(nonZeroRows.size()); ++r) {
+            ValueType sum = zero;
+            for (index k = rowIdx[r]; k < rowIdx[r + 1]; ++k)
+                sum += input[columnIdx[k]];
+            output[nonZeroRows[r]] += sum;
+        }
+    }
+
+    /** Overwrites @a output with the product of the unit-valued sparsity pattern and @a input. */
+    void multiplyUnitValuesInto(const Vector &input, Vector &output) const {
+        assert(!input.isTransposed() && !output.isTransposed());
+        assert(input.getDimension() == nCols && output.getDimension() == nRows);
+        output.fill(zero);
+#pragma omp parallel for
+        for (omp_index r = 0; r < static_cast<omp_index>(nonZeroRows.size()); ++r) {
+            ValueType sum = zero;
+            for (index k = rowIdx[r]; k < rowIdx[r + 1]; ++k)
+                sum += input[columnIdx[k]];
+            output[nonZeroRows[r]] = sum;
+        }
+    }
+
 };
 
 } // namespace NetworKit

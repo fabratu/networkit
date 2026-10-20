@@ -41,10 +41,10 @@ void SMatrixContainer<Matrix>::build(SMatrixType matrixType, VSRMatrix *vsrMatri
     reset();
 
     if (patternOnly) {
-        if constexpr (!std::is_same_v<Matrix, ACSRMatrix>)
-            throw std::invalid_argument("Pattern-only storage is supported only for ACSRMatrix");
-        if (matrixType != SMatrixType::Delta)
-            throw std::invalid_argument("Pattern-only ACSRMatrix storage requires delta matrices");
+        if constexpr (!std::is_same_v<Matrix, ACSRMatrix> && !std::is_same_v<Matrix, DCSRMatrix>)
+            throw std::invalid_argument("Pattern-only storage requires ACSRMatrix or DCSRMatrix");
+        if (matrixType != SMatrixType::Delta && !std::is_same_v<Matrix, DCSRMatrix>)
+            throw std::invalid_argument("Pattern-only level storage requires DCSRMatrix");
     }
 
     const count dimension = hGraph.upperEdgeIdBound();
@@ -66,7 +66,8 @@ void SMatrixContainer<Matrix>::build(SMatrixType matrixType, VSRMatrix *vsrMatri
 
     const auto createBuckets = [&](const auto &pairs, auto firstOf, auto secondOf) {
         const bool parallelPatternBuild =
-            patternOnly && matrixType == SMatrixType::Delta && std::is_same_v<Matrix, ACSRMatrix>;
+            patternOnly && matrixType == SMatrixType::Delta
+            && (std::is_same_v<Matrix, ACSRMatrix> || std::is_same_v<Matrix, DCSRMatrix>);
         const count numberOfChunks =
             pairs.empty()
                 ? 1
@@ -204,7 +205,8 @@ void SMatrixContainer<Matrix>::build(SMatrixType matrixType, VSRMatrix *vsrMatri
     }
 
     const bool deriveMetadataFromPatterns =
-        patternOnly && matrixType == SMatrixType::Delta && std::is_same_v<Matrix, ACSRMatrix>;
+        patternOnly && matrixType == SMatrixType::Delta
+        && (std::is_same_v<Matrix, ACSRMatrix> || std::is_same_v<Matrix, DCSRMatrix>);
     if (alphaVector != nullptr && !deriveMetadataFromPatterns) {
         alphaVector->assign(maximumIntersection + 1, 1.0);
         std::vector<count> degrees(dimension, 0);
@@ -344,7 +346,9 @@ void SMatrixContainer<Matrix>::build(SMatrixType matrixType, VSRMatrix *vsrMatri
                         rowOffsets[row + 1] = rowOffsets[row] + rowCounts[row];
 
                     std::vector<index> columnIndices(numberOfEntries);
-                    std::vector<double> values(numberOfEntries);
+                    std::vector<double> values;
+                    if (!patternOnly)
+                        values.resize(numberOfEntries);
 #pragma omp parallel for schedule(guided)
                     for (omp_index row = 0; row < static_cast<omp_index>(dimension); ++row) {
                         index destination = rowOffsets[row];
@@ -353,7 +357,8 @@ void SMatrixContainer<Matrix>::build(SMatrixType matrixType, VSRMatrix *vsrMatri
                             for (index entry = pattern.rowOffsets[row];
                                  entry < pattern.rowOffsets[row + 1]; ++entry) {
                                 columnIndices[destination] = pattern.columnIndices[entry];
-                                values[destination] = 1.0;
+                                if (!patternOnly)
+                                    values[destination] = 1.0;
                                 ++destination;
                             }
                         }
@@ -364,8 +369,13 @@ void SMatrixContainer<Matrix>::build(SMatrixType matrixType, VSRMatrix *vsrMatri
                                               std::move(columnIndices), std::move(values), 0.0,
                                               false);
                     } else {
-                        matrices.emplace_back(dimension, dimension, rowOffsets, columnIndices,
-                                              values, 0.0, false);
+                        if (patternOnly) {
+                            matrices.emplace_back(dimension, dimension, std::move(rowOffsets),
+                                                  std::move(columnIndices), false);
+                        } else {
+                            matrices.emplace_back(dimension, dimension, rowOffsets, columnIndices,
+                                                  values, 0.0, false);
+                        }
                     }
                     currentMatrix = matrices.size() - 1;
                 }
@@ -462,7 +472,7 @@ void SMatrixContainer<Matrix>::build(SMatrixType matrixType, VSRMatrix *vsrMatri
                 for (count s = 1; s <= maximumIntersection + 1; ++s) {
                     auto &pattern = exactPatterns[s];
                     matrices.emplace_back(dimension, dimension, s, std::move(pattern.rowOffsets),
-                                          std::move(pattern.columnIndices), false);
+                                          std::move(pattern.columnIndices), false, true);
                     levelToMatrix.push_back(matrices.size() - 1);
                 }
             } else {
@@ -476,27 +486,69 @@ void SMatrixContainer<Matrix>::build(SMatrixType matrixType, VSRMatrix *vsrMatri
                 }
             }
         } else {
-            // All delta levels without an exact interaction share this matrix.
-            matrices.emplace_back(dimension);
-            constexpr index emptyMatrixIndex = 0;
+            if (patternOnly) {
+                if constexpr (std::is_same_v<Matrix, DCSRMatrix>) {
+                    std::vector<SparsePattern> exactPatterns(maximumIntersection + 2);
+                    for (count s = 1; s <= maximumIntersection; ++s) {
+                        exactPatterns[s] = makeCsrPatternParallel(deltaEntries[s]);
+                        std::vector<SparseEntry>{}.swap(deltaEntries[s]);
+                    }
+                    exactPatterns[maximumIntersection + 1].rowOffsets.assign(dimension + 1, 0);
 
-            for (count s = 1; s <= maximumIntersection + 1; ++s) {
-                if (deltaEntries[s].empty()) {
-                    levelToMatrix.push_back(emptyMatrixIndex);
-                    continue;
-                }
+                    if (alphaVector != nullptr)
+                        alphaVector->assign(maximumIntersection + 1, 1.0);
+                    if (alphaVector != nullptr || !maximumLevels.empty()) {
+                        std::vector<count> degrees(dimension, 0);
+                        for (count s = maximumIntersection; s > 0; --s) {
+                            count maximumDegree = 0;
+                            const auto &pattern = exactPatterns[s];
+#pragma omp parallel for reduction(max : maximumDegree) schedule(static)
+                            for (omp_index row = 0; row < static_cast<omp_index>(dimension);
+                                 ++row) {
+                                const count exactDegree =
+                                    pattern.rowOffsets[row + 1] - pattern.rowOffsets[row];
+                                degrees[row] += exactDegree;
+                                maximumDegree = std::max(maximumDegree, degrees[row]);
+                                if (!maximumLevels.empty() && exactDegree != 0)
+                                    maximumLevels[row] = std::max(maximumLevels[row], s);
+                            }
+                            if (alphaVector != nullptr)
+                                (*alphaVector)[s - 1] =
+                                    1.0 / (static_cast<double>(maximumDegree) + 1.0);
+                        }
+                    }
 
-                auto [rowOffsets, columnIndices] = makeCsrPattern(deltaEntries[s]);
-                std::vector<double> values(columnIndices.size(), 1.0);
-                if constexpr (std::is_same_v<Matrix, CSRMatrix>) {
-                    matrices.emplace_back(dimension, dimension, std::move(rowOffsets),
-                                          std::move(columnIndices), std::move(values), 0.0, false);
-                } else {
-                    matrices.emplace_back(dimension, dimension, rowOffsets, columnIndices, values,
-                                          0.0, false);
+                    for (count s = 1; s <= maximumIntersection + 1; ++s) {
+                        auto &pattern = exactPatterns[s];
+                        matrices.emplace_back(dimension, dimension, std::move(pattern.rowOffsets),
+                                              std::move(pattern.columnIndices), false);
+                        levelToMatrix.push_back(matrices.size() - 1);
+                    }
                 }
-                std::vector<SparseEntry>{}.swap(deltaEntries[s]);
-                levelToMatrix.push_back(matrices.size() - 1);
+            } else {
+                // All delta levels without an exact interaction share this matrix.
+                matrices.emplace_back(dimension);
+                constexpr index emptyMatrixIndex = 0;
+
+                for (count s = 1; s <= maximumIntersection + 1; ++s) {
+                    if (deltaEntries[s].empty()) {
+                        levelToMatrix.push_back(emptyMatrixIndex);
+                        continue;
+                    }
+
+                    auto [rowOffsets, columnIndices] = makeCsrPattern(deltaEntries[s]);
+                    std::vector<double> values(columnIndices.size(), 1.0);
+                    if constexpr (std::is_same_v<Matrix, CSRMatrix>) {
+                        matrices.emplace_back(dimension, dimension, std::move(rowOffsets),
+                                              std::move(columnIndices), std::move(values), 0.0,
+                                              false);
+                    } else {
+                        matrices.emplace_back(dimension, dimension, rowOffsets, columnIndices,
+                                              values, 0.0, false);
+                    }
+                    std::vector<SparseEntry>{}.swap(deltaEntries[s]);
+                    levelToMatrix.push_back(matrices.size() - 1);
+                }
             }
         }
     }
@@ -543,6 +595,20 @@ void SMatrixContainer<Matrix>::multiplyInto(const VSRMatrix &input, VSRMatrix &o
         {
             for (const auto &matrix : matrices) {
                 if (matrix.k == 1) {
+                    if (matrix.compressedRows) {
+#pragma omp for schedule(static)
+                        for (omp_index compressedRow = 0;
+                             compressedRow < static_cast<omp_index>(matrix.nonZeroRows.size());
+                             ++compressedRow) {
+                            const index row = matrix.nonZeroRows[compressedRow];
+                            double sum = output(row, 0);
+                            for (index entry = matrix.rowIdx[compressedRow];
+                                 entry < matrix.rowIdx[compressedRow + 1]; ++entry)
+                                sum += input(matrix.columnIdx[entry], 0);
+                            output(row, 0) = sum;
+                        }
+                        continue;
+                    }
 #pragma omp for schedule(static)
                     for (omp_index row = 0; row < static_cast<omp_index>(hGraph.upperEdgeIdBound());
                          ++row) {
@@ -551,6 +617,21 @@ void SMatrixContainer<Matrix>::multiplyInto(const VSRMatrix &input, VSRMatrix &o
                              ++entry)
                             sum += input(matrix.columnIdx[entry], 0);
                         output(row, 0) = sum;
+                    }
+                    continue;
+                }
+                if (matrix.compressedRows) {
+#pragma omp for schedule(guided)
+                    for (omp_index compressedRow = 0;
+                         compressedRow < static_cast<omp_index>(matrix.nonZeroRows.size());
+                         ++compressedRow) {
+                        double *const outputRow = &output(matrix.nonZeroRows[compressedRow], 0);
+                        for (index entry = matrix.rowIdx[compressedRow];
+                             entry < matrix.rowIdx[compressedRow + 1]; ++entry) {
+                            const double *const inputRow = &input(matrix.columnIdx[entry], 0);
+                            std::transform(inputRow, inputRow + matrix.k, outputRow, outputRow,
+                                           std::plus<double>{});
+                        }
                     }
                     continue;
                 }

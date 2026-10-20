@@ -14,15 +14,13 @@ HyperKatzCentralityNaiveSum::HyperKatzCentralityNaiveSum(const Hypergraph &hGrap
     if (tolerance < 0)
         throw std::invalid_argument("The ranking tolerance must be non-negative");
 
-    matrices.build(SMatrixType::Level);
+    matrices.build(SMatrixType::Level, nullptr, nullptr, true);
 
     alphaByLevel.resize(matrices.getMaxLevel() + 1, 0.0);
-    matrices.forLevels([&](count s, const CSRMatrix &matrix) {
-        count maxDegree = 0;
-#pragma omp parallel for reduction(max : maxDegree)
-        for (omp_index eid = 0; eid < static_cast<omp_index>(matrix.numberOfRows()); ++eid)
-            maxDegree = std::max(maxDegree, matrix.nnzInRow(eid));
-
+    matrices.forLevels([&](count s, const DCSRMatrix &matrix) {
+        if (matrix.nnz() == 0)
+            return;
+        const count maxDegree = matrix.maximumRowDegree();
         const double alpha = 1.0 / (static_cast<double>(maxDegree) + 1.0);
         levelMatrices.push_back(&matrix);
         levelAlphas.push_back(alpha);
@@ -113,12 +111,6 @@ bool HyperKatzCentralityNaiveSum::areSufficientlyRanked(edgeid high, edgeid low)
     return msLowerBound[high] > msUpperBound[low] - rankTolerance;
 }
 
-// NOTES:
-// - currentPaths holds vectors, currently vector values, but without alpha paths are num paths are
-// uints
-// - parrallelize over levelMatrices, maybe via parallelForLevel in matrix container
-// - maybe more efficient to update alpha also iterativly
-
 void HyperKatzCentralityNaiveSum::doIteration() {
     msUpperBound.parallelForElements(
         [&](index element, double &value) { value = msLowerBound[element]; });
@@ -136,15 +128,6 @@ void HyperKatzCentralityNaiveSum::doIteration() {
         });
         alphaPowers[i] *= levelAlphas[i];
     }
-    // INFO("LowerBound: ", msLowerBound);
-    // INFO("UpperBound: ", msUpperBound);
-
-    // Vector firstEntry = Vector(levelMatrices.size(), 0.0);
-    // Vector lastEntry = Vector(levelMatrices.size(), 0.0);
-    // for (int i = 0; i < levelMatrices.size(); i++) {
-    //     lastEntry[i] = currentPaths[i][dimension - 1];
-    //     firstEntry[i] = currentPaths[i][0];
-    // }
     ++iterationReached;
 }
 

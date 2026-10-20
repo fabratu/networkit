@@ -67,7 +67,7 @@ private:
     bool areSufficientlyRanked(edgeid high, edgeid low) const;
 
     const Hypergraph &hGraph;
-    SMatrixContainer<CSRMatrix> matrices;
+    SMatrixContainer<DCSRMatrix> matrices;
     const count k;
     const bool groupOnly;
     const double rankTolerance;

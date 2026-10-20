@@ -173,6 +173,75 @@ TEST(SMatrixContainerGTest, testDCSRStorage) {
     EXPECT_EQ(container.getMatrix(3) * ones, Vector(4));
 }
 
+TEST(SMatrixContainerGTest, testPatternOnlyDCSRDeltaStorage) {
+    Hypergraph hGraph(6);
+    hGraph.addEdge({0, 1, 2});
+    hGraph.addEdge({0, 1, 3});
+    hGraph.addEdge({0, 4});
+    hGraph.addEdge({5});
+
+    SMatrixContainer<DCSRMatrix> dcsr(hGraph);
+    SMatrixContainer<ACSRMatrix> acsr(hGraph);
+    std::vector<double> dcsrAlphas;
+    std::vector<double> acsrAlphas;
+    dcsr.build(SMatrixType::Delta, nullptr, &dcsrAlphas, true);
+    acsr.build(SMatrixType::Delta, nullptr, &acsrAlphas, true);
+
+    EXPECT_EQ(dcsrAlphas, acsrAlphas);
+    EXPECT_EQ(dcsr.getMaxLevel(), acsr.getMaxLevel());
+    const Vector input({1.0, 2.0, 3.0, 4.0});
+    for (count level = 1; level <= dcsr.getMaxLevel(); ++level) {
+        const auto &dcsrMatrix = dcsr.getMatrix(level);
+        const auto &acsrMatrix = acsr.getMatrix(level);
+        EXPECT_TRUE(dcsrMatrix.hasUnitValues());
+        EXPECT_EQ(dcsrMatrix.nnz(), acsrMatrix.nnz());
+        Vector acsrResult(hGraph.upperEdgeIdBound(), 0.0);
+        acsrMatrix.addUnitValuesInto(input, acsrResult);
+        EXPECT_EQ(dcsrMatrix * input, acsrResult);
+        Vector accumulated(hGraph.upperEdgeIdBound(), 3.0);
+        dcsrMatrix.addUnitValuesInto(input, accumulated);
+        EXPECT_EQ(accumulated, acsrResult + Vector(hGraph.upperEdgeIdBound(), 3.0));
+    }
+}
+
+TEST(SMatrixContainerGTest, testPatternOnlyDCSRLevelStorage) {
+    Hypergraph hGraph(6);
+    hGraph.addEdge({0, 1, 2});
+    hGraph.addEdge({0, 1, 3});
+    hGraph.addEdge({0, 4});
+    hGraph.addEdge({5});
+
+    SMatrixContainer<DCSRMatrix> pattern(hGraph);
+    SMatrixContainer<CSRMatrix> valued(hGraph);
+    std::vector<double> patternAlphas;
+    std::vector<double> valuedAlphas;
+    pattern.build(SMatrixType::Level, nullptr, &patternAlphas, true);
+    valued.build(SMatrixType::Level, nullptr, &valuedAlphas);
+
+    EXPECT_EQ(patternAlphas, valuedAlphas);
+    EXPECT_EQ(pattern.getMaxLevel(), valued.getMaxLevel());
+    const Vector input({1.0, 2.0, 3.0, 4.0});
+    for (count level = 1; level < pattern.getMaxLevel(); ++level) {
+        const auto &matrix = pattern.getMatrix(level);
+        EXPECT_TRUE(matrix.hasUnitValues());
+        EXPECT_EQ(matrix.nnz(), valued.getMatrix(level).nnz());
+        EXPECT_EQ(matrix * input, valued.getMatrix(level) * input);
+
+        Vector output(hGraph.upperEdgeIdBound(), 7.0);
+        matrix.multiplyUnitValuesInto(input, output);
+        EXPECT_EQ(output, valued.getMatrix(level) * input);
+    }
+    EXPECT_EQ(pattern.getMatrix(pattern.getMaxLevel()).nnz(), 0);
+
+    Hypergraph repeated(2);
+    repeated.addEdge({0, 1});
+    repeated.addEdge({0, 1});
+    SMatrixContainer<DCSRMatrix> repeatedPattern(repeated);
+    repeatedPattern.build(SMatrixType::Level, nullptr, nullptr, true);
+    EXPECT_EQ(&repeatedPattern.getMatrix(1), &repeatedPattern.getMatrix(2));
+    EXPECT_EQ(repeatedPattern.getMatrix(3).nnz(), 0);
+}
+
 TEST(SMatrixContainerGTest, testACSRDeltaStorage) {
     Hypergraph hGraph(6);
     hGraph.addEdge({0, 1});
@@ -233,6 +302,87 @@ TEST(SMatrixContainerGTest, testParallelPatternOnlyACSRBuildAndMultiply) {
     container.multiplyInto(input, output);
     for (index row = 0; row < hGraph.numberOfEdges(); ++row)
         EXPECT_DOUBLE_EQ(output(row, 0), 9.0);
+
+    const auto &pattern = container.getMatrix(1);
+    EXPECT_EQ(pattern.nnz(), 90);
+    Vector vectorInput(hGraph.numberOfEdges(), 1.0);
+    Vector vectorOutput(hGraph.numberOfEdges(), 2.0);
+    pattern.addUnitValuesInto(vectorInput, vectorOutput);
+    for (index row = 0; row < hGraph.numberOfEdges(); ++row)
+        EXPECT_DOUBLE_EQ(vectorOutput[row], 11.0);
+}
+
+TEST(SMatrixContainerGTest, testCompressedACSRPatternPreservesProducts) {
+    const std::vector<index> offsets{0, 0, 1, 1, 1, 2, 2};
+    const std::vector<index> columns{2, 1};
+    ACSRMatrix dense(6, 6, 2, std::vector<index>(offsets), std::vector<index>(columns));
+    ACSRMatrix compressed(6, 6, 2, std::vector<index>(offsets),
+                          std::vector<index>(columns), false, true);
+
+    ASSERT_FALSE(dense.hasCompressedRows());
+    ASSERT_TRUE(compressed.hasCompressedRows());
+    EXPECT_LT(compressed.rowIndexBytes(), dense.rowIndexBytes());
+
+    const Vector vectorInput({1.0, 5.0, 3.0, 0.0, 0.0, 0.0});
+    Vector denseOutput(6, 2.0);
+    Vector compressedOutput(6, 2.0);
+    dense.addUnitValuesInto(vectorInput, denseOutput);
+    compressed.addUnitValuesInto(vectorInput, compressedOutput);
+    EXPECT_EQ(compressedOutput, denseOutput);
+    EXPECT_EQ(compressedOutput, Vector({2.0, 5.0, 2.0, 2.0, 7.0, 2.0}));
+
+    VSRMatrix input(6, 3, 2, std::vector<count>(6, 2));
+    input(2, 0) = 3.0;
+    input(2, 1) = 4.0;
+    input(1, 0) = 5.0;
+    input(1, 1) = 6.0;
+    VSRMatrix denseProduct(6, 3, 2, std::vector<count>(6, 2));
+    VSRMatrix compressedProduct = denseProduct;
+    dense.multiplyInto(input, denseProduct);
+    compressed.multiplyInto(input, compressedProduct);
+    for (index row = 0; row < 6; ++row) {
+        for (index value = 0; value < 2; ++value)
+            EXPECT_DOUBLE_EQ(compressedProduct(row, value), denseProduct(row, value));
+    }
+
+    ACSRMatrix empty(6, 6, 1, std::vector<index>(7, 0), std::vector<index>{}, false, true);
+    ASSERT_TRUE(empty.hasCompressedRows());
+    EXPECT_EQ(empty.rowIndexBytes(), sizeof(index));
+    EXPECT_THROW(empty.updateOther(denseProduct), std::logic_error);
+}
+
+TEST(SMatrixContainerGTest, testCombinedMultiplyWithCompressedLevel) {
+    Hypergraph hGraph(12);
+    for (node u = 1; u <= 10; ++u) {
+        if (u <= 2)
+            hGraph.addEdge({0, u, 11});
+        else
+            hGraph.addEdge({0, u});
+    }
+
+    SMatrixContainer<ACSRMatrix> container(hGraph);
+    VSRMatrix input;
+    container.build(SMatrixType::Delta, &input, nullptr, true);
+    ASSERT_FALSE(container.getMatrix(1).hasCompressedRows());
+    ASSERT_TRUE(container.getMatrix(2).hasCompressedRows());
+
+    VSRMatrix combined = input;
+    combined.reset();
+    container.multiplyInto(input, combined);
+
+    VSRMatrix separate = input;
+    separate.reset();
+    container.forLevels([&](count, const ACSRMatrix &matrix) {
+        matrix.multiplyInto(input, separate);
+    });
+    for (index row = 0; row < hGraph.numberOfEdges(); ++row) {
+        EXPECT_DOUBLE_EQ(combined(row, 0), 9.0);
+        EXPECT_DOUBLE_EQ(combined(row, 0), separate(row, 0));
+    }
+    for (index row = 0; row < 2; ++row) {
+        EXPECT_DOUBLE_EQ(combined(row, 1), 1.0);
+        EXPECT_DOUBLE_EQ(combined(row, 1), separate(row, 1));
+    }
 }
 
 TEST(SMatrixContainerGTest, testBuildSetsVSRMatrixWithOneRowPerEdge) {

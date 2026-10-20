@@ -13,6 +13,7 @@ namespace NetworKit {
 
 class DenseMatrix;
 class VSRMatrix;
+class Vector;
 template <typename Matrix>
 class SMatrixContainer;
 
@@ -35,6 +36,7 @@ class ACSRMatrix final {
     friend class SMatrixContainer;
 
     std::vector<index> rowIdx;
+    std::vector<index> nonZeroRows;
     std::vector<index> columnIdx;
     std::vector<double> nonZeros;
 
@@ -42,6 +44,8 @@ class ACSRMatrix final {
     count nCols;
     count k;
     bool isSorted;
+    bool compressedRows = false;
+    bool patternOnly = false;
 
     static void validateK(count k) {
         if (k == 0)
@@ -54,7 +58,7 @@ class ACSRMatrix final {
     }
 
     void assureValues() const {
-        if (!columnIdx.empty() && nonZeros.empty())
+        if (patternOnly)
             throw std::logic_error("This ACSRMatrix stores only a sparsity pattern");
     }
 
@@ -246,12 +250,14 @@ public:
 
     /**
      * Constructs a pattern-only matrix by taking ownership of CSR index arrays. Value-based
-     * operations are unavailable, but multiplyInto() can use the pattern directly.
+     * operations are unavailable, but multiplyInto() can use the pattern directly. When requested,
+     * rows are compressed only if storing their IDs and offsets uses less space than dense offsets.
      */
     ACSRMatrix(count nRows, count nCols, count k, std::vector<index> &&rowIdx,
-               std::vector<index> &&columnIdx, bool isSorted = false)
+               std::vector<index> &&columnIdx, bool isSorted = false,
+               bool compressEmptyRows = false)
         : rowIdx(std::move(rowIdx)), columnIdx(std::move(columnIdx)), nonZeros(), nRows(nRows),
-          nCols(nCols), k(k), isSorted(isSorted) {
+          nCols(nCols), k(k), isSorted(isSorted), patternOnly(true) {
         validateK(k);
         if (this->rowIdx.size() != nRows + 1 || this->rowIdx.front() != 0
             || this->rowIdx.back() != this->columnIdx.size()
@@ -261,6 +267,29 @@ public:
         for (index column : this->columnIdx) {
             if (column >= nCols)
                 throw std::out_of_range("ACSRMatrix column index out of range");
+        }
+
+        if (compressEmptyRows) {
+            count activeRows = 0;
+            for (index row = 0; row < nRows; ++row)
+                activeRows += this->rowIdx[row] != this->rowIdx[row + 1];
+
+            // DCSR uses one row ID and one offset per nonempty row. Keep CSR when
+            // its row-offset array is no larger, particularly for dense level 1.
+            if (activeRows < nRows - activeRows) {
+                nonZeroRows.reserve(activeRows);
+                std::vector<index> compressedOffsets;
+                compressedOffsets.reserve(activeRows + 1);
+                compressedOffsets.push_back(0);
+                for (index row = 0; row < nRows; ++row) {
+                    if (this->rowIdx[row] != this->rowIdx[row + 1]) {
+                        nonZeroRows.push_back(row);
+                        compressedOffsets.push_back(this->rowIdx[row + 1]);
+                    }
+                }
+                this->rowIdx.swap(compressedOffsets);
+                compressedRows = true;
+            }
         }
     }
 
@@ -292,6 +321,20 @@ public:
      * output row i.
      */
     void multiplyInto(const VSRMatrix &input, VSRMatrix &output) const;
+
+    /** Adds the product of this matrix's unit-valued pattern and @a input to @a output. */
+    void addUnitValuesInto(const Vector &input, Vector &output) const;
+
+    /** Returns the number of stored entries, including for a pattern-only matrix. */
+    count nnz() const noexcept { return columnIdx.size(); }
+
+    /** Returns whether this pattern stores offsets only for nonempty rows. */
+    bool hasCompressedRows() const noexcept { return compressedRows; }
+
+    /** Returns the bytes used by the row-index arrays, excluding vector overhead. */
+    count rowIndexBytes() const noexcept {
+        return (rowIdx.size() + nonZeroRows.size()) * sizeof(index);
+    }
 
     void assign(const DenseMatrix &other);
 

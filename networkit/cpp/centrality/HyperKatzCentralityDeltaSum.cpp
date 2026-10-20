@@ -17,34 +17,18 @@ HyperKatzCentralityDeltaSum::HyperKatzCentralityDeltaSum(const Hypergraph &hGrap
     if (tolerance < 0)
         throw std::invalid_argument("The ranking tolerance must be non-negative");
 
-    matrices.build(SMatrixType::Delta);
+    matrices.build(SMatrixType::Delta, nullptr, &levelAlphas, true);
 
-    count maxDegree = 0.0;
-
-    SMatrixContainer<DCSRMatrix> maxDegBuilder(hGraph);
-    maxDegBuilder.build(SMatrixType::Level);
-    Vector ones(hGraph.upperEdgeIdBound(), 1.0);
-
-    // This actually overestimates the maxDegree. For correct result, we need the level matrices (or
-    // store the correct value in SMatrixContainer when building delta matrices)
-    matrices.forLevels([&](count s, const CSRMatrix &matrix) {
-        const NetworKit::DCSRMatrix &levelRef = maxDegBuilder.getMatrix(s);
-        const Vector degrees = levelRef * ones;
-        maxDegree = degrees.max();
-
-        // deltaMatrices.push_back(&matrix);
-        levelMaxDegrees.push_back(maxDegree);
-        const double alpha = 1.0 / (static_cast<double>(maxDegree) + 1.0);
-        levelAlphas.push_back(alpha);
-        // Add degree of delta matrix to all lower levels
-        // for (int i = 0; i < levelMaxDegrees.size() - 1; i++) {
-        //     levelMaxDegrees[i] += maxDegree;
-        // }
-    });
-
-    if (matrices.numberOfMatrices() == 0)
+    bool hasInteractions = false;
+    matrices.forLevels(
+        [&](count, const DCSRMatrix &matrix) { hasInteractions |= matrix.nnz() != 0; });
+    if (!hasInteractions)
         throw std::runtime_error(
             "At least one non-empty s-level matrix is required for HyperKatzCentrality");
+
+    levelMaxDegrees.reserve(levelAlphas.size());
+    for (double alpha : levelAlphas)
+        levelMaxDegrees.push_back(static_cast<count>(std::round(1.0 / alpha - 1.0)));
 }
 
 void HyperKatzCentralityDeltaSum::run() {
@@ -123,9 +107,9 @@ void HyperKatzCentralityDeltaSum::doIteration() {
 
     for (index level = 1; level <= matrices.getMaxLevel(); ++level) {
         deltaCorrection.fill(0.0);
-        matrices.forLevelsReverseUntil(level, [&](count s, const CSRMatrix &matrix) {
+        matrices.forLevelsReverseUntil(level, [&](count, const DCSRMatrix &matrix) {
             if (matrix.nnz() > 0)
-                deltaCorrection += matrix * currentPaths[level - 1];
+                matrix.addUnitValuesInto(currentPaths[level - 1], deltaCorrection);
         });
 
         currentPaths[level - 1] = deltaCorrection;

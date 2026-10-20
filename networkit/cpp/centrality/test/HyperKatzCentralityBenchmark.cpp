@@ -28,12 +28,12 @@ namespace {
 
 // constexpr auto inputPath =
 //     "input/hyperlap-sbm-n500000-d2.5-5-50-c1.5-x1.0-q2.0-2-20-wmajority.hmetis";
-// constexpr auto inputPath =
-//     "input/hyperlap-sbm-n500000-d2.5-20-50-c1.5-x1.0-q2.0-2-20-wmajority.hmetis";
+constexpr auto inputPath =
+    "input/hyperlap-sbm-n500000-d2.5-20-50-c1.5-x1.0-q2.0-2-20-wmajority.hmetis";
 // constexpr auto inputPath =
 //     "input/hyperlap-sbm-n1000000-d2.5-5-50-c1.5-x1.0-q2.0-2-20-wmajority.hmetis";
-constexpr auto inputPath =
-    "input/hyperlap-sbm-n1000000-d2.5-20-50-c1.5-x1.0-q2.0-2-20-wmajority.hmetis";
+// constexpr auto inputPath =
+//     "input/hyperlap-sbm-n1000000-d2.5-20-50-c1.5-x1.0-q2.0-2-20-wmajority.hmetis";
 
 // constexpr auto inputPath = "input/abcdh-n10000-d2.5-5-50-c1.5-x0.5-q-2.0-2-20-wstrict.hmetis";
 // constexpr auto inputPath = "input/edge-walmart-edge-label.hmetis";

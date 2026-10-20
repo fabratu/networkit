@@ -589,6 +589,19 @@ public:
         }
     }
 
+    /** Adds the product of the unit-valued sparsity pattern and @a input to @a output. */
+    void addUnitValuesInto(const Vector &input, Vector &output) const {
+        assert(!input.isTransposed() && !output.isTransposed());
+        assert(input.getDimension() == nCols && output.getDimension() == nRows);
+#pragma omp parallel for
+        for (omp_index i = 0; i < static_cast<omp_index>(numberOfRows()); ++i) {
+            ValueType sum = zero;
+            for (index cIdx = rowIdx[i]; cIdx < rowIdx[i + 1]; ++cIdx)
+                sum += input[columnIdx[cIdx]];
+            output[i] += sum;
+        }
+    }
+
     /**
      * Multiplies the sparsity pattern of this matrix with @a vector and overwrites @a result.
      * Every stored entry is treated as one, irrespective of its value. The result vector must

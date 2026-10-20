@@ -105,6 +105,31 @@ TEST(HyperKatzCentralityGTest, testDeltaSum) {
          centrality.score(centrality.top(1)), ",", centrality.score(centrality.top(2)));
 }
 
+TEST(HyperKatzCentralityGTest, testDeltaSumMatchesNaiveSumWithEmptyLevels) {
+    Hypergraph hGraph(7);
+    hGraph.addEdge({0, 1, 2});
+    hGraph.addEdge({0, 1, 2, 3});
+    hGraph.addEdge({3, 4});
+    hGraph.addEdge({4, 5});
+    hGraph.addEdge({5, 6});
+
+    HyperKatzCentralityDeltaSum delta(hGraph, 2, true);
+    HyperKatzCentralityNaiveSum naive(hGraph, 2, true);
+    delta.run();
+    naive.run();
+
+    EXPECT_EQ(delta.iterationReached, naive.iterationReached);
+    for (count i = 0; i < 2; ++i)
+        EXPECT_EQ(delta.top(i), naive.top(i));
+    const auto deltaRanking = delta.ranking();
+    const auto naiveRanking = naive.ranking();
+    ASSERT_EQ(deltaRanking.size(), naiveRanking.size());
+    for (index i = 0; i < deltaRanking.size(); ++i) {
+        EXPECT_EQ(deltaRanking[i].first, naiveRanking[i].first);
+        EXPECT_NEAR(deltaRanking[i].second, naiveRanking[i].second, 1e-12);
+    }
+}
+
 TEST(HyperKatzCentralityGTest, testNaiveSum) {
     Aux::Log::setLogLevel("INFO");
     const Hypergraph hGraph = HMETISHypergraphReader{}.read("input/gene-disease.hmetis");
