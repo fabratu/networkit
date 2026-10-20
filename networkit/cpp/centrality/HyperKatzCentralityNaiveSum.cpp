@@ -1,4 +1,5 @@
 #include <algorithm>
+#include <chrono>
 #include <stdexcept>
 
 #include <networkit/auxiliary/Log.hpp>
@@ -14,6 +15,7 @@ HyperKatzCentralityNaiveSum::HyperKatzCentralityNaiveSum(const Hypergraph &hGrap
     if (tolerance < 0)
         throw std::invalid_argument("The ranking tolerance must be non-negative");
 
+    auto start = std::chrono::high_resolution_clock::now();
     matrices.build(SMatrixType::Level, nullptr, nullptr, true);
 
     alphaByLevel.resize(matrices.getMaxLevel() + 1, 0.0);
@@ -27,6 +29,8 @@ HyperKatzCentralityNaiveSum::HyperKatzCentralityNaiveSum(const Hypergraph &hGrap
         levelUpperFactors.push_back(alpha * maxDegree / (1.0 - alpha * maxDegree));
         alphaByLevel[s] = alpha;
     });
+    auto end = std::chrono::high_resolution_clock::now();
+    INFO("Setup: ", std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count());
 
     if (levelMatrices.empty())
         throw std::runtime_error(
@@ -34,6 +38,7 @@ HyperKatzCentralityNaiveSum::HyperKatzCentralityNaiveSum(const Hypergraph &hGrap
 }
 
 void HyperKatzCentralityNaiveSum::run() {
+    auto start = std::chrono::high_resolution_clock::now();
     const count dimension = hGraph.upperEdgeIdBound();
 
     currentPaths.clear();
@@ -59,6 +64,8 @@ void HyperKatzCentralityNaiveSum::run() {
     } while (!checkConvergence());
 
     hasRun = true;
+    auto end = std::chrono::high_resolution_clock::now();
+    INFO("Run: ", std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count());
 }
 
 const Vector &HyperKatzCentralityNaiveSum::scores() const {

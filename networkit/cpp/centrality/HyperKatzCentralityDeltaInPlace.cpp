@@ -17,6 +17,7 @@ HyperKatzCentralityDeltaInPlace::HyperKatzCentralityDeltaInPlace(const Hypergrap
     if (tolerance < 0)
         throw std::invalid_argument("The ranking tolerance must be non-negative");
 
+    auto start = std::chrono::high_resolution_clock::now();
     std::vector<double> levelAlphas;
     matrices.build(SMatrixType::Delta, &currentPaths, &levelAlphas, true);
     nextPaths = currentPaths;
@@ -33,10 +34,12 @@ HyperKatzCentralityDeltaInPlace::HyperKatzCentralityDeltaInPlace(const Hypergrap
     if (matrices.numberOfMatrices() == 0)
         throw std::runtime_error(
             "At least one non-empty s-level matrix is required for HyperKatzCentrality");
+    auto end = std::chrono::high_resolution_clock::now();
+    INFO("Setup: ", std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count());
 }
 
 void HyperKatzCentralityDeltaInPlace::run() {
-    std::chrono::steady_clock::time_point begin = std::chrono::steady_clock::now();
+    auto start = std::chrono::high_resolution_clock::now();
     const count dimension = hGraph.upperEdgeIdBound();
 
     activeRanking.clear();
@@ -54,6 +57,8 @@ void HyperKatzCentralityDeltaInPlace::run() {
     } while (!checkConvergence());
 
     hasRun = true;
+    auto end = std::chrono::high_resolution_clock::now();
+    INFO("Run: ", std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count());
 }
 
 const Vector &HyperKatzCentralityDeltaInPlace::scores() const {

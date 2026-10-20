@@ -17,6 +17,7 @@ HyperKatzCentralityDeltaSum::HyperKatzCentralityDeltaSum(const Hypergraph &hGrap
     if (tolerance < 0)
         throw std::invalid_argument("The ranking tolerance must be non-negative");
 
+    auto start = std::chrono::high_resolution_clock::now();
     matrices.build(SMatrixType::Delta, nullptr, &levelAlphas, true);
 
     bool hasInteractions = false;
@@ -29,10 +30,13 @@ HyperKatzCentralityDeltaSum::HyperKatzCentralityDeltaSum(const Hypergraph &hGrap
     levelMaxDegrees.reserve(levelAlphas.size());
     for (double alpha : levelAlphas)
         levelMaxDegrees.push_back(static_cast<count>(std::round(1.0 / alpha - 1.0)));
+
+    auto end = std::chrono::high_resolution_clock::now();
+    INFO("Setup: ", std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count());
 }
 
 void HyperKatzCentralityDeltaSum::run() {
-    std::chrono::steady_clock::time_point begin = std::chrono::steady_clock::now();
+    auto start = std::chrono::high_resolution_clock::now();
     const count dimension = hGraph.upperEdgeIdBound();
 
     currentPaths.clear();
@@ -55,6 +59,8 @@ void HyperKatzCentralityDeltaSum::run() {
     } while (!checkConvergence());
 
     hasRun = true;
+    auto end = std::chrono::high_resolution_clock::now();
+    INFO("Run: ", std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count());
 }
 
 const Vector &HyperKatzCentralityDeltaSum::scores() const {
