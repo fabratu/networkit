@@ -215,6 +215,26 @@ TEST(SMatrixContainerGTest, testComputesLevelAlphasDuringDeltaBuild) {
     EXPECT_DOUBLE_EQ(alphas[2], 1.0);
 }
 
+TEST(SMatrixContainerGTest, testParallelPatternOnlyACSRBuildAndMultiply) {
+    Hypergraph hGraph(1);
+    for (count edge = 0; edge < 10; ++edge)
+        hGraph.addEdge({0});
+
+    SMatrixContainer<ACSRMatrix> container(hGraph);
+    VSRMatrix input;
+    std::vector<double> alphas;
+    container.build(SMatrixType::Delta, &input, &alphas, true);
+
+    ASSERT_GE(alphas.size(), 1);
+    EXPECT_DOUBLE_EQ(alphas[0], 0.1);
+
+    VSRMatrix output = input;
+    output.reset();
+    container.multiplyInto(input, output);
+    for (index row = 0; row < hGraph.numberOfEdges(); ++row)
+        EXPECT_DOUBLE_EQ(output(row, 0), 9.0);
+}
+
 TEST(SMatrixContainerGTest, testBuildSetsVSRMatrixWithOneRowPerEdge) {
     Hypergraph hGraph(6);
     hGraph.addEdge({0, 1, 2});

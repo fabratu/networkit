@@ -16,13 +16,12 @@ HyperKatzCentralityNaiveSum::HyperKatzCentralityNaiveSum(const Hypergraph &hGrap
 
     matrices.build(SMatrixType::Level);
 
-    Vector ones(hGraph.upperEdgeIdBound(), 1.0);
     alphaByLevel.resize(matrices.getMaxLevel() + 1, 0.0);
     matrices.forLevels([&](count s, const CSRMatrix &matrix) {
-        const Vector degrees = matrix * ones;
         count maxDegree = 0;
-        hGraph.forEdges(
-            [&](edgeid eid) { maxDegree = std::max(maxDegree, static_cast<count>(degrees[eid])); });
+#pragma omp parallel for reduction(max : maxDegree)
+        for (omp_index eid = 0; eid < static_cast<omp_index>(matrix.numberOfRows()); ++eid)
+            maxDegree = std::max(maxDegree, matrix.nnzInRow(eid));
 
         const double alpha = 1.0 / (static_cast<double>(maxDegree) + 1.0);
         levelMatrices.push_back(&matrix);
@@ -125,7 +124,7 @@ void HyperKatzCentralityNaiveSum::doIteration() {
         [&](index element, double &value) { value = msLowerBound[element]; });
 
     for (index i = 0; i < levelMatrices.size(); ++i) {
-        levelMatrices[i]->multiplyInto(currentPaths[i], nextPaths[i]);
+        levelMatrices[i]->multiplyUnitValuesInto(currentPaths[i], nextPaths[i]);
         std::swap(currentPaths[i], nextPaths[i]);
 
         const double lowerFactor = alphaPowers[i];

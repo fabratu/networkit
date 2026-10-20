@@ -65,6 +65,22 @@ TEST(HyperKatzCentralityGTest, testTopKAndValidation) {
     disconnected.addEdge({1});
     EXPECT_THROW(HyperKatzCentrality(disconnected, 1), std::runtime_error);
 }
+
+TEST(HyperKatzCentralityGTest, testNaiveSumSkipsEmptyTerminalLevel) {
+    Hypergraph hGraph(4);
+    hGraph.addEdge({0, 1});
+    hGraph.addEdge({0, 1, 2});
+    hGraph.addEdge({2, 3});
+
+    HyperKatzCentralityNaiveSum centrality(hGraph, 3, false, 1e-12);
+    EXPECT_DOUBLE_EQ(centrality.getAlpha(1), 1.0 / 3.0);
+    EXPECT_DOUBLE_EQ(centrality.getAlpha(2), 0.5);
+    EXPECT_THROW(centrality.getAlpha(3), std::invalid_argument);
+
+    centrality.run();
+    EXPECT_EQ(centrality.ranking().front().first, 1);
+}
+
 TEST(HyperKatzCentralityGTest, testDeltaInPlace) {
     Aux::Log::setLogLevel("INFO");
     const Hypergraph hGraph = HMETISHypergraphReader{}.read("input/gene-disease.hmetis");

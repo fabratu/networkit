@@ -590,6 +590,26 @@ public:
     }
 
     /**
+     * Multiplies the sparsity pattern of this matrix with @a vector and overwrites @a result.
+     * Every stored entry is treated as one, irrespective of its value. The result vector must
+     * already have one entry per matrix row.
+     */
+    void multiplyUnitValuesInto(const Vector &vector, Vector &result) const {
+        assert(!vector.isTransposed());
+        assert(nCols == vector.getDimension());
+        assert(!result.isTransposed());
+        assert(nRows == result.getDimension());
+
+#pragma omp parallel for
+        for (omp_index i = 0; i < static_cast<omp_index>(numberOfRows()); ++i) {
+            double sum = zero;
+            for (index cIdx = rowIdx[i]; cIdx < rowIdx[i + 1]; ++cIdx)
+                sum += vector[columnIdx[cIdx]];
+            result[i] = sum;
+        }
+    }
+
+    /**
      * Multiplies this matrix with @a other and returns the result in a new
      * matrix.
      * @return The result of multiplying this matrix with @a other.

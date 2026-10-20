@@ -2,6 +2,7 @@
 #define NETWORKIT_GRAPH_S_MATRIX_CONTAINER_HPP_
 
 #include <stdexcept>
+#include <type_traits>
 #include <vector>
 
 #include <networkit/Globals.hpp>
@@ -104,8 +105,12 @@ public:
 
         for (count s = 1; s <= getMaxLevel(); ++s) {
             const Matrix &matrix = matrices[levelToMatrix[s - 1]];
-            // if (matrix.nnz() != 0)
-            handle(s, matrix);
+            if constexpr (std::is_same_v<Matrix, CSRMatrix>) {
+                if (matrix.nnz() != 0)
+                    handle(s, matrix);
+            } else {
+                handle(s, matrix);
+            }
         }
     }
 
