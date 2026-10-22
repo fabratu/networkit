@@ -32,7 +32,9 @@ HyperKatzCentralityDeltaSum::HyperKatzCentralityDeltaSum(const Hypergraph &hGrap
         levelMaxDegrees.push_back(static_cast<count>(std::round(1.0 / alpha - 1.0)));
 
     auto end = std::chrono::high_resolution_clock::now();
-    INFO("Setup: ", std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count());
+    std::cout << "Setup: "
+              << std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count() << " ms"
+              << std::endl;
 }
 
 void HyperKatzCentralityDeltaSum::run() {
@@ -60,7 +62,9 @@ void HyperKatzCentralityDeltaSum::run() {
 
     hasRun = true;
     auto end = std::chrono::high_resolution_clock::now();
-    INFO("Run: ", std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count());
+    std::cout << "Run: "
+              << std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count() << " ms"
+              << std::endl;
 }
 
 const Vector &HyperKatzCentralityDeltaSum::scores() const {

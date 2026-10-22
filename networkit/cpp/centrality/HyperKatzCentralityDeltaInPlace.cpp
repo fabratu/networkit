@@ -35,7 +35,9 @@ HyperKatzCentralityDeltaInPlace::HyperKatzCentralityDeltaInPlace(const Hypergrap
         throw std::runtime_error(
             "At least one non-empty s-level matrix is required for HyperKatzCentrality");
     auto end = std::chrono::high_resolution_clock::now();
-    INFO("Setup: ", std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count());
+    std::cout << "Setup: "
+              << std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count() << " ms"
+              << std::endl;
 }
 
 void HyperKatzCentralityDeltaInPlace::run() {
@@ -58,7 +60,9 @@ void HyperKatzCentralityDeltaInPlace::run() {
 
     hasRun = true;
     auto end = std::chrono::high_resolution_clock::now();
-    INFO("Run: ", std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count());
+    std::cout << "Run: "
+              << std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count() << " ms"
+              << std::endl;
 }
 
 const Vector &HyperKatzCentralityDeltaInPlace::scores() const {

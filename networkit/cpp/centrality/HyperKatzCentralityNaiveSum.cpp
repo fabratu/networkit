@@ -30,7 +30,9 @@ HyperKatzCentralityNaiveSum::HyperKatzCentralityNaiveSum(const Hypergraph &hGrap
         alphaByLevel[s] = alpha;
     });
     auto end = std::chrono::high_resolution_clock::now();
-    INFO("Setup: ", std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count());
+    std::cout << "Setup: "
+              << std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count() << " ms"
+              << std::endl;
 
     if (levelMatrices.empty())
         throw std::runtime_error(
@@ -65,7 +67,9 @@ void HyperKatzCentralityNaiveSum::run() {
 
     hasRun = true;
     auto end = std::chrono::high_resolution_clock::now();
-    INFO("Run: ", std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count());
+    std::cout << "Run: "
+              << std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count() << " ms"
+              << std::endl;
 }
 
 const Vector &HyperKatzCentralityNaiveSum::scores() const {
