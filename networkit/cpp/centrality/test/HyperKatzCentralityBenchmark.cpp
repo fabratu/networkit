@@ -19,6 +19,7 @@
 #include <networkit/centrality/HyperKatzCentrality.hpp>
 #include <networkit/centrality/HyperKatzCentralityDeltaInPlace.hpp>
 #include <networkit/centrality/HyperKatzCentralityDeltaSum.hpp>
+#include <networkit/centrality/HyperKatzCentralityGraph.hpp>
 #include <networkit/centrality/HyperKatzCentralityNaiveSum.hpp>
 #include <networkit/centrality/HyperKatzCentralityNaiveSumPerLevelEps.hpp>
 #include <networkit/io/HMETISHypergraphReader.hpp>
@@ -39,6 +40,16 @@ constexpr auto inputPath =
 // constexpr auto inputPath = "input/edge-walmart-edge-label.hmetis";
 // constexpr auto inputPath = "input/gene-disease.hmetis";
 constexpr count topK = 100;
+
+template <typename Centrality>
+uint64_t topKHash(const Centrality &centrality) {
+    uint64_t hash = 1469598103934665603ULL;
+    for (count i = 0; i < topK; ++i) {
+        hash ^= centrality.top(i);
+        hash *= 1099511628211ULL;
+    }
+    return hash;
+}
 
 uint64_t residentSetBytes() noexcept {
 #if defined(__APPLE__)
@@ -160,6 +171,53 @@ TEST(HyperKatzCentralityBenchmark, benchmarkNaiveSum) {
               << "  additional resident memory after loading: "
               << static_cast<double>(memory.additionalBytes()) / bytesPerMiB << " MiB\n"
               << "  iterations: " << centrality->iterationReached
+              << " top-100 hash: " << topKHash(*centrality)
+              << " top 3 edges: " << centrality->top(0) << "," << centrality->top(1) << ","
+              << centrality->top(2) << " top 3 score: " << centrality->score(centrality->top(0))
+              << "," << centrality->score(centrality->top(1)) << ","
+              << centrality->score(centrality->top(2)) << std::endl;
+
+    EXPECT_TRUE(centrality->hasFinished());
+}
+
+TEST(HyperKatzCentralityBenchmark, benchmarkGraph) {
+#if !defined(__APPLE__) && !defined(__linux__)
+    GTEST_SKIP() << "Resident-memory sampling is only available on macOS and Linux";
+#endif
+
+    const Hypergraph hGraph = HMETISHypergraphReader{}.read(inputPath);
+    PeakResidentMemorySampler memory;
+    ASSERT_TRUE(memory.isSupported());
+
+    Aux::Timer timer;
+    timer.start();
+    const auto constructionStart = std::chrono::steady_clock::now();
+    auto centrality = std::make_unique<HyperKatzCentralityGraph>(hGraph, topK, true);
+    const auto constructionEnd = std::chrono::steady_clock::now();
+    centrality->run();
+    const auto runEnd = std::chrono::steady_clock::now();
+    timer.stop();
+    memory.stop();
+
+    constexpr double bytesPerMiB = 1024.0 * 1024.0;
+    std::cout << "HyperKatzCentralityGraph benchmark: " << hGraph.numberOfNodes() << " nodes, "
+              << hGraph.numberOfEdges() << " hyperedges, top-k=" << topK << '\n'
+              << "  runtime: " << timer.elapsedMilliseconds() << " ms\n"
+              << "  construction: "
+              << std::chrono::duration_cast<std::chrono::milliseconds>(constructionEnd
+                                                                      - constructionStart)
+                     .count()
+              << " ms\n"
+              << "  iterations: "
+              << std::chrono::duration_cast<std::chrono::milliseconds>(runEnd - constructionEnd)
+                     .count()
+              << " ms\n"
+              << "  peak resident memory: " << static_cast<double>(memory.peakBytes()) / bytesPerMiB
+              << " MiB\n"
+              << "  additional resident memory after loading: "
+              << static_cast<double>(memory.additionalBytes()) / bytesPerMiB << " MiB\n"
+              << "  iterations: " << centrality->iterationReached
+              << " top-100 hash: " << topKHash(*centrality)
               << " top 3 edges: " << centrality->top(0) << "," << centrality->top(1) << ","
               << centrality->top(2) << " top 3 score: " << centrality->score(centrality->top(0))
               << "," << centrality->score(centrality->top(1)) << ","

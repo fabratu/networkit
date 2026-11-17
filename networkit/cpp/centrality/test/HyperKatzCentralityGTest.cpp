@@ -3,8 +3,10 @@
 #include <networkit/centrality/HyperKatzCentrality.hpp>
 #include <networkit/centrality/HyperKatzCentralityDeltaInPlace.hpp>
 #include <networkit/centrality/HyperKatzCentralityDeltaSum.hpp>
+#include <networkit/centrality/HyperKatzCentralityGraph.hpp>
 #include <networkit/centrality/HyperKatzCentralityNaiveSum.hpp>
 #include <networkit/graph/Hypergraph.hpp>
+#include <networkit/graph/SLevelGraphContainer.hpp>
 #include <networkit/io/HMETISHypergraphReader.hpp>
 
 namespace NetworKit {
@@ -128,6 +130,58 @@ TEST(HyperKatzCentralityGTest, testDeltaSumMatchesNaiveSumWithEmptyLevels) {
         EXPECT_EQ(deltaRanking[i].first, naiveRanking[i].first);
         EXPECT_NEAR(deltaRanking[i].second, naiveRanking[i].second, 1e-12);
     }
+}
+
+TEST(HyperKatzCentralityGTest, testGraphLevelsAndRankingMatchNaiveSum) {
+    Hypergraph hGraph(7);
+    hGraph.addEdge({0, 1, 2});
+    hGraph.addEdge({0, 1, 2, 3});
+    hGraph.addEdge({3, 4});
+    hGraph.addEdge({4, 5});
+    hGraph.addEdge({5, 6});
+
+    SLevelGraphContainer graphs(hGraph);
+    graphs.build();
+    EXPECT_EQ(graphs.getMaxLevel(), 4);
+    EXPECT_EQ(graphs.graph(1).numberOfEdges(), 4);
+    EXPECT_EQ(graphs.graph(2).numberOfEdges(), 1);
+    EXPECT_TRUE(graphs.graph(1).checkConsistency());
+    EXPECT_TRUE(graphs.graph(2).checkConsistency());
+    EXPECT_EQ(&graphs.graph(2), &graphs.graph(3));
+    EXPECT_EQ(graphs.maximumDegree(1), 2);
+    EXPECT_EQ(graphs.maximumDegree(2), 1);
+    EXPECT_EQ(graphs.activeNodes(2).size(), 2);
+
+    HyperKatzCentralityGraph graph(hGraph, 2, true);
+    HyperKatzCentralityNaiveSum naive(hGraph, 2, true);
+    EXPECT_DOUBLE_EQ(graph.getAlpha(1), naive.getAlpha(1));
+    EXPECT_DOUBLE_EQ(graph.getAlpha(2), naive.getAlpha(2));
+    EXPECT_DOUBLE_EQ(graph.getAlpha(3), naive.getAlpha(3));
+    graph.run();
+    naive.run();
+
+    EXPECT_EQ(graph.iterationReached, naive.iterationReached);
+    for (count i = 0; i < 2; ++i)
+        EXPECT_EQ(graph.top(i), naive.top(i));
+    const auto graphRanking = graph.ranking();
+    const auto naiveRanking = naive.ranking();
+    ASSERT_EQ(graphRanking.size(), naiveRanking.size());
+    for (index i = 0; i < graphRanking.size(); ++i) {
+        EXPECT_EQ(graphRanking[i].first, naiveRanking[i].first);
+        EXPECT_NEAR(graphRanking[i].second, naiveRanking[i].second, 1e-12);
+    }
+}
+
+TEST(HyperKatzCentralityGTest, testGraphRejectsEmptyLevelFamily) {
+    Hypergraph hGraph(4);
+    hGraph.addEdge({0, 1});
+    hGraph.addEdge({2, 3});
+
+    SLevelGraphContainer graphs(hGraph);
+    graphs.build();
+    EXPECT_EQ(graphs.getMaxLevel(), 1);
+    EXPECT_THROW(graphs.graph(1), std::out_of_range);
+    EXPECT_THROW(HyperKatzCentralityGraph(hGraph, 1), std::runtime_error);
 }
 
 TEST(HyperKatzCentralityGTest, testNaiveSum) {

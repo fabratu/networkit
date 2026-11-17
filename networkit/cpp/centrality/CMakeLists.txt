@@ -30,6 +30,7 @@ networkit_add_module(centrality
     HyperKatzCentrality.cpp
     HyperKatzCentralityDeltaInPlace.cpp
     HyperKatzCentralityDeltaSum.cpp
+    HyperKatzCentralityGraph.cpp
     HyperKatzCentralityNaiveSum.cpp
     HyperKatzCentralityNaiveSumPerLevelEps.cpp
     KadabraBetweenness.cpp

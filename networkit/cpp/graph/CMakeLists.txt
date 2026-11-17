@@ -4,6 +4,7 @@ networkit_add_module(graph
     Hypergraph.cpp
     HypergraphTools.cpp
     SMatrixContainer.cpp
+    SLevelGraphContainer.cpp
     KruskalMSF.cpp
     PrimMSF.cpp
     RandomMaximumSpanningForest.cpp
