@@ -366,6 +366,18 @@ public:
         return compactColumns ? compactColumnIdx.size() : columnIdx.size();
     }
 
+    /** Visits nonempty rows with their number of stored entries. */
+    template <typename F>
+    void parallelForRowDegrees(F handle) const {
+#pragma omp parallel for schedule(static)
+        for (omp_index storedRow = 0; storedRow < static_cast<omp_index>(rowIdx.size() - 1);
+             ++storedRow) {
+            const count degree = rowIdx[storedRow + 1] - rowIdx[storedRow];
+            if (degree != 0)
+                handle(compressedRows ? nonZeroRows[storedRow] : storedRow, degree);
+        }
+    }
+
     /** Returns whether columns are stored as 32-bit IDs. */
     bool hasCompactColumns() const noexcept { return compactColumns; }
 

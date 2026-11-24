@@ -60,6 +60,12 @@ public:
         return values.data() + rowIdx[i];
     }
 
+    /** Returns the number of stored levels in row @a i. */
+    count rowLength(index i) const noexcept {
+        assert(i < nRows);
+        return rowIdx[i + 1] - rowIdx[i];
+    }
+
     /** Resets all entries to zero */
     void reset();
 

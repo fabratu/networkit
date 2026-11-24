@@ -197,6 +197,25 @@ public:
         return maximum;
     }
 
+    Vector alphaVector() const noexcept {
+        Vector result(nRows, 1.0);
+        for (index row = 0; row < nonZeroRows.size(); ++row) {
+            auto deg = rowIdx[row + 1] - rowIdx[row];
+            result[nonZeroRows[row]] = 1.0 / (static_cast<double>(deg) + 1.0);
+        }
+        return result;
+    }
+
+    Vector upperBoundVector(const Vector &alphas) const noexcept {
+        Vector result(nRows, 0.0);
+        for (index row = 0; row < nonZeroRows.size(); ++row) {
+            const double degree = static_cast<double>(rowIdx[row + 1] - rowIdx[row]);
+            const index node = nonZeroRows[row];
+            result[node] = degree * alphas[node] / (1.0 - alphas[node] * degree);
+        }
+        return result;
+    }
+
     /** Multiplies this matrix with a column vector. */
     Vector operator*(const Vector &vector) const {
         assert(!vector.isTransposed());
@@ -251,7 +270,6 @@ public:
             output[nonZeroRows[r]] = sum;
         }
     }
-
 };
 
 } // namespace NetworKit

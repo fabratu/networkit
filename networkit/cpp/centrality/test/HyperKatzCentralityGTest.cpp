@@ -2,9 +2,11 @@
 
 #include <networkit/centrality/HyperKatzCentrality.hpp>
 #include <networkit/centrality/HyperKatzCentralityDeltaInPlace.hpp>
+#include <networkit/centrality/HyperKatzCentralityDeltaInPlaceTight.hpp>
 #include <networkit/centrality/HyperKatzCentralityDeltaSum.hpp>
 #include <networkit/centrality/HyperKatzCentralityGraph.hpp>
 #include <networkit/centrality/HyperKatzCentralityNaiveSum.hpp>
+#include <networkit/centrality/HyperKatzCentralityNaiveSumTight.hpp>
 #include <networkit/graph/Hypergraph.hpp>
 #include <networkit/graph/SLevelGraphContainer.hpp>
 #include <networkit/io/HMETISHypergraphReader.hpp>
@@ -83,6 +85,43 @@ TEST(HyperKatzCentralityGTest, testNaiveSumSkipsEmptyTerminalLevel) {
     EXPECT_EQ(centrality.ranking().front().first, 1);
 }
 
+TEST(HyperKatzCentralityGTest, testNaiveSumTightUsesNodeDampingAndRequestedFactors) {
+    Hypergraph hGraph(4);
+    hGraph.addEdge({0, 1});
+    hGraph.addEdge({0, 2});
+    hGraph.addEdge({1, 3});
+
+    HyperKatzCentralityNaiveSumTight tight(hGraph, 1, true, 1e-12);
+    EXPECT_DOUBLE_EQ(tight.getAlpha(1, 0), 1.0 / 3.0);
+    EXPECT_DOUBLE_EQ(tight.getAlpha(1, 1), 0.5);
+    EXPECT_DOUBLE_EQ(tight.getAlpha(1, 2), 0.5);
+    EXPECT_THROW(tight.getAlpha(2, 0), std::invalid_argument);
+    EXPECT_THROW(tight.getAlpha(3, 0), std::out_of_range);
+    EXPECT_THROW(tight.getAlpha(1, 3), std::out_of_range);
+
+    SMatrixContainer<DCSRMatrix> matrices(hGraph);
+    matrices.build(SMatrixType::Level, nullptr, nullptr, true);
+    matrices.forLevels([&](count s, const DCSRMatrix &matrix) {
+        if (s != 1)
+            return;
+        const Vector alphas = matrix.alphaVector();
+        const Vector upperFactors = matrix.upperBoundVector(alphas);
+        EXPECT_NEAR(upperFactors[0], 2.0, 1e-12);
+        EXPECT_DOUBLE_EQ(upperFactors[1], 1.0);
+        EXPECT_DOUBLE_EQ(upperFactors[2], 1.0);
+    });
+
+    tight.run();
+    EXPECT_EQ(tight.top(), 0);
+    // The exact weighted-walk scores are 3/2 for the center and 5/4 for each leaf.
+    const double exactScores[] = {1.5, 1.25, 1.25};
+    for (edgeid eid = 0; eid < 3; ++eid) {
+        EXPECT_LE(tight.score(eid), exactScores[eid] + 1e-12);
+        EXPECT_GE(tight.bound(eid), tight.score(eid));
+    }
+    EXPECT_GT(tight.score(1), 1.0 / 3.0);
+}
+
 TEST(HyperKatzCentralityGTest, testDeltaInPlace) {
     Aux::Log::setLogLevel("INFO");
     const Hypergraph hGraph = HMETISHypergraphReader{}.read("input/gene-disease.hmetis");
@@ -93,6 +132,19 @@ TEST(HyperKatzCentralityGTest, testDeltaInPlace) {
     centrality.run();
     INFO("Top 3 score: ", centrality.score(centrality.top(0)), ",",
          centrality.score(centrality.top(1)), ",", centrality.score(centrality.top(2)));
+}
+
+TEST(HyperKatzCentralityGTest, testNaiveSumTight) {
+    Aux::Log::setLogLevel("INFO");
+    const Hypergraph hGraph = HMETISHypergraphReader{}.read("input/gene-disease.hmetis");
+    // const Hypergraph hGraph =
+    // HMETISHypergraphReader{}.read("input/edge-walmart-edge-label.hmetis");
+
+    HyperKatzCentralityNaiveSumTight centrality(hGraph, 100);
+    centrality.run();
+    INFO("Top 3 score: ", centrality.score(centrality.top(0)), ",",
+         centrality.score(centrality.top(1)), ",", centrality.score(centrality.top(2)));
+    INFO("Top 3: ", centrality.top(0), ",", centrality.top(1), ",", centrality.top(2));
 }
 
 TEST(HyperKatzCentralityGTest, testDeltaSum) {
@@ -130,6 +182,39 @@ TEST(HyperKatzCentralityGTest, testDeltaSumMatchesNaiveSumWithEmptyLevels) {
         EXPECT_EQ(deltaRanking[i].first, naiveRanking[i].first);
         EXPECT_NEAR(deltaRanking[i].second, naiveRanking[i].second, 1e-12);
     }
+}
+
+TEST(HyperKatzCentralityGTest, testDeltaInPlaceTightMatchesNaiveSumTight) {
+    Hypergraph hGraph(7);
+    hGraph.addEdge({0, 1, 2});
+    hGraph.addEdge({0, 1, 2, 3});
+    hGraph.addEdge({3, 4});
+    hGraph.addEdge({4, 5});
+    hGraph.addEdge({5, 6});
+
+    HyperKatzCentralityDeltaInPlaceTight inPlaceOne(hGraph, 5, true);
+    HyperKatzCentralityNaiveSumTight naiveOne(hGraph, 5, true);
+    inPlaceOne.run();
+    naiveOne.run();
+    EXPECT_EQ(inPlaceOne.iterationReached, 2);
+    EXPECT_EQ(naiveOne.iterationReached, 2);
+    hGraph.forEdges([&](edgeid eid) {
+        EXPECT_NEAR(inPlaceOne.score(eid), naiveOne.score(eid), 1e-12);
+        EXPECT_NEAR(inPlaceOne.bound(eid), naiveOne.bound(eid), 1e-12);
+    });
+
+    HyperKatzCentralityDeltaInPlaceTight inPlace(hGraph, 2, true);
+    HyperKatzCentralityNaiveSumTight naive(hGraph, 2, true);
+    inPlace.run();
+    naive.run();
+
+    EXPECT_EQ(inPlace.iterationReached, naive.iterationReached);
+    for (count rank = 0; rank < 2; ++rank)
+        EXPECT_EQ(inPlace.top(rank), naive.top(rank));
+    hGraph.forEdges([&](edgeid eid) {
+        EXPECT_NEAR(inPlace.score(eid), naive.score(eid), 1e-12);
+        EXPECT_NEAR(inPlace.bound(eid), naive.bound(eid), 1e-12);
+    });
 }
 
 TEST(HyperKatzCentralityGTest, testGraphLevelsAndRankingMatchNaiveSum) {
@@ -194,6 +279,7 @@ TEST(HyperKatzCentralityGTest, testNaiveSum) {
     centrality.run();
     INFO("Top 3 score: ", centrality.score(centrality.top(0)), ",",
          centrality.score(centrality.top(1)), ",", centrality.score(centrality.top(2)));
+    INFO("Top 3: ", centrality.top(0), ",", centrality.top(1), ",", centrality.top(2));
 }
 
 } // namespace NetworKit

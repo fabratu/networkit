@@ -1,5 +1,6 @@
 #include <algorithm>
 #include <chrono>
+#include <sstream>
 #include <stdexcept>
 
 #include <networkit/auxiliary/Log.hpp>
@@ -138,6 +139,21 @@ void HyperKatzCentralityNaiveSum::doIteration() {
             msUpperBound[element] += lowerContribution + upperFactor * pathCount;
         });
         alphaPowers[i] *= levelAlphas[i];
+    }
+    if (Aux::Log::isLogLevelEnabled(Aux::Log::LogLevel::INFO)) {
+        std::ostringstream lower;
+        std::ostringstream upper;
+        const count limit = std::min<count>(10, msLowerBound.getDimension());
+        for (count eid = 0; eid < limit; ++eid) {
+            if (eid != 0) {
+                lower << ", ";
+                upper << ", ";
+            }
+            lower << msLowerBound[eid];
+            upper << msUpperBound[eid];
+        }
+        INFO("msLowerBound first ", limit, ": ", lower.str());
+        INFO("msUpperBound first ", limit, ": ", upper.str());
     }
     ++iterationReached;
 }
